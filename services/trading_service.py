@@ -52,19 +52,38 @@ class TradingService:
 
         # Initialize API credentials if we have them stored
         if wallet.has_api_credentials:
-            api_key = self.encryption.decrypt(
-                wallet.api_key_encrypted,
-                wallet.encryption_salt,
-            )
-            api_secret = self.encryption.decrypt(
-                wallet.api_secret_encrypted,
-                wallet.encryption_salt,
-            )
-            api_passphrase = self.encryption.decrypt(
-                wallet.api_passphrase_encrypted,
-                wallet.encryption_salt,
-            )
-            client.set_api_credentials(api_key, api_secret, api_passphrase)
+            try:
+                api_key = self.encryption.decrypt(
+                    wallet.api_key_encrypted,
+                    wallet.encryption_salt,
+                )
+                api_secret = self.encryption.decrypt(
+                    wallet.api_secret_encrypted,
+                    wallet.encryption_salt,
+                )
+                api_passphrase = self.encryption.decrypt(
+                    wallet.api_passphrase_encrypted,
+                    wallet.encryption_salt,
+                )
+                client.set_api_credentials(api_key, api_secret, api_passphrase)
+            except Exception as e:
+                # Decryption failed - likely due to changed encryption key
+                # Regenerate API credentials
+                logger.warning(f"Failed to decrypt API credentials, regenerating: {e}")
+                await client.initialize()
+
+                if client.api_credentials:
+                    creds = client.api_credentials
+                    enc_key, _ = self.encryption.encrypt(creds["api_key"])
+                    enc_secret, _ = self.encryption.encrypt(creds["api_secret"])
+                    enc_pass, _ = self.encryption.encrypt(creds["api_passphrase"])
+
+                    await self.wallet_repo.update_api_credentials(
+                        wallet.id,
+                        enc_key,
+                        enc_secret,
+                        enc_pass,
+                    )
         else:
             # Initialize and store credentials
             await client.initialize()
