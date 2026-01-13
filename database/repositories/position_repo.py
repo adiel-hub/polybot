@@ -146,16 +146,23 @@ class PositionRepository:
             realized_pnl = (sell_price - position.average_entry_price) * size_to_reduce
             new_size = position.size - size_to_reduce
 
-            await conn.execute(
-                """
-                UPDATE positions
-                SET size = ?,
-                    realized_pnl = realized_pnl + ?,
-                    updated_at = ?
-                WHERE id = ?
-                """,
-                (max(0, new_size), realized_pnl, datetime.utcnow(), position_id),
-            )
+            # If position is fully closed, delete it
+            if new_size <= 0:
+                await conn.execute(
+                    "DELETE FROM positions WHERE id = ?",
+                    (position_id,),
+                )
+            else:
+                await conn.execute(
+                    """
+                    UPDATE positions
+                    SET size = ?,
+                        realized_pnl = realized_pnl + ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (new_size, realized_pnl, datetime.utcnow(), position_id),
+                )
             await conn.commit()
 
     async def delete_empty_positions(self, user_id: int) -> None:
