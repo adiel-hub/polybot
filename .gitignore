@@ -14,8 +14,13 @@ env/
 
 # Database
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
+*.sqlite-shm
+*.sqlite-wal
 data/
+test_*.db
 
 # IDE
 .vscode/
@@ -31,6 +36,9 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+*.pyc
+.tox/
+.cache/
 
 # Build
 dist/
@@ -41,5 +49,6 @@ build/
 .DS_Store
 Thumbs.db
 
-# Test scripts (temporary)
-test_poly_*.py
+# Temporary test files (these should be in tests/ folder)
+# Only ignore if they're temporary development files
+# test_*.py files in root should be moved to tests/
