@@ -5,8 +5,9 @@ Tests the Market dataclass parsing and GammaMarketClient functionality.
 
 import json
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from core.polymarket.gamma_client import Market
+from core.polymarket.gamma_client import Market, GammaMarketClient
 
 
 class TestMarketModel:
@@ -196,3 +197,301 @@ class TestMarketModel:
 
         assert market.condition_id == "fallback_id"
         assert market.question == "Fallback Title"
+
+
+class TestGammaMarketClientLeaderboard:
+    """Tests for GammaMarketClient leaderboard methods."""
+
+    @pytest.fixture
+    def client(self):
+        """Create GammaMarketClient instance."""
+        return GammaMarketClient()
+
+    @pytest.fixture
+    def mock_leaderboard_response(self):
+        """Mock leaderboard API response."""
+        return [
+            {
+                "rank": "1",
+                "proxyWallet": "0x1234567890abcdef1234567890abcdef12345678",
+                "userName": "TopTrader",
+                "vol": 500000,
+                "pnl": 15234.50,
+                "profileImage": "https://example.com/avatar.jpg",
+                "xUsername": "toptrader",
+                "verifiedBadge": True,
+            },
+            {
+                "rank": "2",
+                "proxyWallet": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+                "userName": "ProTrader",
+                "vol": 350000,
+                "pnl": 8921.30,
+                "profileImage": "",
+                "xUsername": "",
+                "verifiedBadge": False,
+            },
+        ]
+
+    # Test get_top_traders
+    @pytest.mark.asyncio
+    async def test_get_top_traders_default_params(
+        self, client, mock_leaderboard_response
+    ):
+        """Test get_top_traders with default parameters."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_leaderboard_response
+
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_http_client
+
+            result = await client.get_top_traders()
+
+            assert len(result) == 2
+            assert result[0]["address"] == "0x1234567890abcdef1234567890abcdef12345678"
+            assert result[0]["name"] == "TopTrader"
+            assert result[0]["pnl"] == 15234.50
+            assert result[0]["volume"] == 500000.0
+            assert result[0]["rank"] == 1
+            assert result[0]["verified"] is True
+
+            # Check API call
+            mock_http_client.get.assert_called_once()
+            call_args = mock_http_client.get.call_args
+            assert "data-api.polymarket.com/v1/leaderboard" in call_args[0][0]
+            assert call_args[1]["params"]["category"] == "OVERALL"
+            assert call_args[1]["params"]["timePeriod"] == "WEEK"
+            assert call_args[1]["params"]["orderBy"] == "PNL"
+            assert call_args[1]["params"]["limit"] == 25
+            assert call_args[1]["params"]["offset"] == 0
+
+    @pytest.mark.asyncio
+    async def test_get_top_traders_custom_params(self, client, mock_leaderboard_response):
+        """Test get_top_traders with custom parameters."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_leaderboard_response
+
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_http_client
+
+            result = await client.get_top_traders(
+                limit=50,
+                offset=10,
+                category="POLITICS",
+                time_period="MONTH",
+                order_by="VOL",
+            )
+
+            assert len(result) == 2
+            call_args = mock_http_client.get.call_args
+            assert call_args[1]["params"]["category"] == "POLITICS"
+            assert call_args[1]["params"]["timePeriod"] == "MONTH"
+            assert call_args[1]["params"]["orderBy"] == "VOL"
+            assert call_args[1]["params"]["limit"] == 50
+            assert call_args[1]["params"]["offset"] == 10
+
+    @pytest.mark.asyncio
+    async def test_get_top_traders_limits_max_limit(self, client):
+        """Test get_top_traders caps limit at 50."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = []
+
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_http_client
+
+            await client.get_top_traders(limit=100)
+
+            call_args = mock_http_client.get.call_args
+            assert call_args[1]["params"]["limit"] == 50  # Capped at 50
+
+    @pytest.mark.asyncio
+    async def test_get_top_traders_limits_max_offset(self, client):
+        """Test get_top_traders caps offset at 1000."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = []
+
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_http_client
+
+            await client.get_top_traders(offset=2000)
+
+            call_args = mock_http_client.get.call_args
+            assert call_args[1]["params"]["offset"] == 1000  # Capped at 1000
+
+    @pytest.mark.asyncio
+    async def test_get_top_traders_handles_non_200_status(self, client):
+        """Test get_top_traders handles non-200 status code."""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_http_client
+
+            result = await client.get_top_traders()
+
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_top_traders_handles_exception(self, client):
+        """Test get_top_traders handles exceptions."""
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(side_effect=Exception("Network error"))
+            mock_get_client.return_value = mock_http_client
+
+            result = await client.get_top_traders()
+
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_top_traders_parses_all_fields(
+        self, client, mock_leaderboard_response
+    ):
+        """Test get_top_traders parses all fields correctly."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_leaderboard_response
+
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_http_client
+
+            result = await client.get_top_traders()
+
+            trader = result[0]
+            assert "address" in trader
+            assert "name" in trader
+            assert "pnl" in trader
+            assert "volume" in trader
+            assert "rank" in trader
+            assert "profile_image" in trader
+            assert "x_username" in trader
+            assert "verified" in trader
+
+    # Test get_trader_profile
+    @pytest.mark.asyncio
+    async def test_get_trader_profile_success(self, client):
+        """Test get_trader_profile returns trader data."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "rank": "5",
+                "proxyWallet": "0x1234567890abcdef1234567890abcdef12345678",
+                "userName": "SearchedTrader",
+                "vol": 250000,
+                "pnl": 5432.10,
+                "profileImage": "https://example.com/pic.jpg",
+                "xUsername": "searched",
+                "verifiedBadge": True,
+            }
+        ]
+
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_http_client
+
+            result = await client.get_trader_profile(
+                "0x1234567890abcdef1234567890abcdef12345678"
+            )
+
+            assert result is not None
+            assert result["name"] == "SearchedTrader"
+            assert result["pnl"] == 5432.10
+            assert result["rank"] == 5
+
+            # Check API was called with address
+            call_args = mock_http_client.get.call_args
+            assert (
+                call_args[1]["params"]["user"]
+                == "0x1234567890abcdef1234567890abcdef12345678"
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_trader_profile_normalizes_address(self, client):
+        """Test get_trader_profile normalizes address to lowercase."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "rank": "5",
+                "proxyWallet": "0x1234567890abcdef1234567890abcdef12345678",
+                "userName": "Trader",
+                "vol": 250000,
+                "pnl": 5000,
+            }
+        ]
+
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_http_client
+
+            await client.get_trader_profile(
+                "0X1234567890ABCDEF1234567890ABCDEF12345678"  # Uppercase
+            )
+
+            call_args = mock_http_client.get.call_args
+            assert (
+                call_args[1]["params"]["user"]
+                == "0x1234567890abcdef1234567890abcdef12345678"  # Lowercase
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_trader_profile_not_found(self, client):
+        """Test get_trader_profile returns None when not found."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = []  # Empty array
+
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_http_client
+
+            result = await client.get_trader_profile("0xnotfound")
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_trader_profile_handles_non_200_status(self, client):
+        """Test get_trader_profile handles non-200 status."""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_http_client
+
+            result = await client.get_trader_profile("0x1234")
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_trader_profile_handles_exception(self, client):
+        """Test get_trader_profile handles exceptions."""
+        with patch.object(client, "_get_client") as mock_get_client:
+            mock_http_client = AsyncMock()
+            mock_http_client.get = AsyncMock(side_effect=Exception("API error"))
+            mock_get_client.return_value = mock_http_client
+
+            result = await client.get_trader_profile("0x1234")
+
+            assert result is None
