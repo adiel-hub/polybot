@@ -77,7 +77,6 @@ class BroadcastService:
                         chat_id=user["telegram_id"],
                         photo=image_file_id,
                         caption=message,
-                        parse_mode="Markdown",
                         reply_markup=reply_markup,
                     )
                 else:
