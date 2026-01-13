@@ -1,0 +1,27 @@
+# Core
+python-telegram-bot[job-queue]>=21.0
+
+# Polymarket
+py-clob-client
+polymarket-apis>=0.1.0
+
+# WebSocket
+websockets>=12.0
+
+# Web3 & Blockchain
+web3
+eth-account
+
+# HTTP Client
+httpx
+
+# Database
+aiosqlite
+
+# Cryptography
+cryptography
+
+# Environment & Config
+python-dotenv
+pydantic
+pydantic-settings

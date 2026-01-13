@@ -1,0 +1,266 @@
+"""Wallet handlers."""
+
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
+from bot.conversations.states import ConversationState
+from bot.keyboards.main_menu import get_wallet_keyboard
+from bot.keyboards.common import get_back_keyboard
+
+logger = logging.getLogger(__name__)
+
+
+async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show wallet information and deposit address."""
+    query = update.callback_query
+    if query:
+        await query.answer()
+
+    user = update.effective_user
+    user_service = context.bot_data["user_service"]
+
+    wallet = await user_service.get_wallet(user.id)
+
+    if not wallet:
+        text = "❌ Wallet not found. Please /start to create one."
+        if query:
+            await query.edit_message_text(text)
+        else:
+            await update.message.reply_text(text)
+        return ConversationState.MAIN_MENU
+
+    text = (
+        f"💳 *Polygon Deposit*\n\n"
+        f"🔑 Your Wallet Address:\n"
+        f"`{wallet.address}`\n\n"
+        f"⚠️ *Please ensure you are:*\n"
+        f"├ 🔗 On Polygon network\n"
+        f"├ 💵 Sending USDC or USDC.e\n"
+        f"└ ✅ Double-checking the address\n\n"
+        f"📍 Minimum: $1.00\n\n"
+        f"⛽ We sponsor gas fees, so you DO NOT need POL in your wallet.\n\n"
+        f"🔔 _We'll notify you when your funds arrive._"
+    )
+
+    keyboard = get_wallet_keyboard()
+
+    if query:
+        await query.edit_message_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode="Markdown",
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode="Markdown",
+        )
+
+    return ConversationState.WALLET_MENU
+
+
+async def handle_wallet_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Handle wallet menu callbacks."""
+    query = update.callback_query
+    await query.answer()
+
+    callback_data = query.data
+    user = update.effective_user
+    user_service = context.bot_data["user_service"]
+
+    if callback_data == "wallet_qr":
+        # Generate QR code (placeholder)
+        wallet = await user_service.get_wallet(user.id)
+        if wallet:
+            await query.edit_message_text(
+                f"📱 *QR Code*\n\n"
+                f"📷 Scan to deposit USDC:\n\n"
+                f"`{wallet.address}`\n\n"
+                f"🔜 _QR code image coming soon_",
+                reply_markup=get_back_keyboard("menu_wallet"),
+                parse_mode="Markdown",
+            )
+        return ConversationState.WALLET_MENU
+
+    elif callback_data == "wallet_withdraw":
+        wallet = await user_service.get_wallet(user.id)
+        if not wallet or wallet.usdc_balance < 1.0:
+            await query.edit_message_text(
+                "💸 *Withdraw*\n\n"
+                "⚠️ Insufficient balance. Minimum withdrawal is $1.00.",
+                reply_markup=get_back_keyboard("menu_wallet"),
+                parse_mode="Markdown",
+            )
+            return ConversationState.WALLET_MENU
+
+        context.user_data["withdraw_balance"] = wallet.usdc_balance
+
+        await query.edit_message_text(
+            f"💸 *Withdraw USDC*\n\n"
+            f"💰 Available balance: `${wallet.usdc_balance:.2f}`\n"
+            f"📍 Minimum withdrawal: $1.00\n\n"
+            f"✏️ Enter the amount to withdraw:",
+            reply_markup=get_back_keyboard("menu_wallet"),
+            parse_mode="Markdown",
+        )
+
+        return ConversationState.WITHDRAW_AMOUNT
+
+    return ConversationState.WALLET_MENU
+
+
+async def handle_withdraw_amount(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Handle withdrawal amount input."""
+    try:
+        amount = float(update.message.text.strip())
+        balance = context.user_data.get("withdraw_balance", 0)
+
+        if amount < 1.0:
+            await update.message.reply_text(
+                "⚠️ Minimum withdrawal is $1.00. Please enter a larger amount."
+            )
+            return ConversationState.WITHDRAW_AMOUNT
+
+        if amount > balance:
+            await update.message.reply_text(
+                f"⚠️ Insufficient balance. You have `${balance:.2f}` available."
+            )
+            return ConversationState.WITHDRAW_AMOUNT
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Invalid amount. Please enter a number."
+        )
+        return ConversationState.WITHDRAW_AMOUNT
+
+    context.user_data["withdraw_amount"] = amount
+
+    await update.message.reply_text(
+        f"💸 *Withdraw ${amount:.2f}*\n\n"
+        f"🔑 Enter the destination wallet address:\n"
+        f"_(Must be a valid Polygon address)_",
+        reply_markup=get_back_keyboard("menu_wallet"),
+        parse_mode="Markdown",
+    )
+
+    return ConversationState.WITHDRAW_ADDRESS
+
+
+async def handle_withdraw_address(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Handle withdrawal address input."""
+    from core.wallet import WalletGenerator
+
+    address = update.message.text.strip()
+
+    if not WalletGenerator.is_valid_address(address):
+        await update.message.reply_text(
+            "❌ Invalid address. Please enter a valid Polygon wallet address."
+        )
+        return ConversationState.WITHDRAW_ADDRESS
+
+    context.user_data["withdraw_address"] = address
+    amount = context.user_data.get("withdraw_amount", 0)
+
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Confirm", callback_data="withdraw_confirm"),
+            InlineKeyboardButton("❌ Cancel", callback_data="menu_wallet"),
+        ]
+    ]
+
+    await update.message.reply_text(
+        f"📋 *Confirm Withdrawal*\n\n"
+        f"💵 Amount: `${amount:.2f}` USDC\n"
+        f"📤 To: `{address[:10]}...{address[-6:]}`\n\n"
+        f"🔗 Network: Polygon\n\n"
+        f"✅ Confirm this withdrawal?",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+    return ConversationState.CONFIRM_WITHDRAW
+
+
+async def confirm_withdraw(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Execute withdrawal."""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    user_service = context.bot_data["user_service"]
+
+    amount = context.user_data.get("withdraw_amount", 0)
+    to_address = context.user_data.get("withdraw_address", "")
+
+    await query.edit_message_text("⏳ Processing withdrawal...")
+
+    try:
+        # Get user's wallet and private key
+        db_user = await user_service.get_user(user.id)
+        if not db_user:
+            raise Exception("User not found")
+
+        private_key = await user_service.get_private_key(db_user.id)
+        if not private_key:
+            raise Exception("Wallet not found")
+
+        # Execute withdrawal
+        from core.blockchain import WithdrawalManager
+
+        withdrawal_mgr = WithdrawalManager()
+        result = await withdrawal_mgr.withdraw(
+            from_private_key=private_key,
+            to_address=to_address,
+            amount=amount,
+        )
+
+        if result.success:
+            # Update balance in database
+            wallet = await user_service.get_wallet(user.id)
+            if wallet:
+                from database.repositories import WalletRepository
+                wallet_repo = WalletRepository(context.bot_data["db"])
+                await wallet_repo.subtract_balance(wallet.id, amount)
+
+            await query.edit_message_text(
+                f"✅ *Withdrawal Submitted!*\n\n"
+                f"💵 Amount: `${amount:.2f}` USDC\n"
+                f"📤 To: `{to_address[:10]}...{to_address[-6:]}`\n"
+                f"🔗 TX: `{result.tx_hash[:16]}...`\n\n"
+                f"⏳ Your withdrawal is being processed.",
+                parse_mode="Markdown",
+            )
+        else:
+            await query.edit_message_text(
+                f"❌ *Withdrawal Failed*\n\n"
+                f"⚠️ Error: {result.error}\n\n"
+                f"🔄 Please try again later.",
+                parse_mode="Markdown",
+            )
+
+    except Exception as e:
+        logger.error(f"Withdrawal failed: {e}")
+        await query.edit_message_text(
+            f"❌ Withdrawal failed: {str(e)}\n\n🔄 Please try again."
+        )
+
+    # Clear withdrawal data
+    for key in ["withdraw_amount", "withdraw_address", "withdraw_balance"]:
+        context.user_data.pop(key, None)
+
+    from bot.handlers.menu import show_main_menu
+    return await show_main_menu(update, context, send_new=True)
