@@ -49,4 +49,8 @@ class AdminState(IntEnum):
     # Broadcast
     BROADCAST_MENU = auto()
     BROADCAST_COMPOSE = auto()
+    BROADCAST_COMPOSE_TEXT = auto()
+    BROADCAST_COMPOSE_IMAGE = auto()
+    BROADCAST_ADD_BUTTONS = auto()
+    BROADCAST_BUTTON_INPUT = auto()
     BROADCAST_CONFIRM = auto()

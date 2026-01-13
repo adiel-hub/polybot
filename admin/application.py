@@ -48,7 +48,12 @@ from admin.handlers.settings import show_settings, handle_setting_toggle
 from admin.handlers.broadcast import (
     show_broadcast_menu,
     prompt_broadcast_compose,
-    handle_broadcast_message,
+    handle_broadcast_type,
+    handle_broadcast_text,
+    handle_broadcast_image,
+    prompt_add_buttons,
+    prompt_button_details,
+    handle_button_input,
     confirm_broadcast,
     send_broadcast,
 )
@@ -190,8 +195,25 @@ def create_admin_handler() -> ConversationHandler:
                 CallbackQueryHandler(show_admin_menu, pattern="^admin_menu$"),
             ],
             AdminState.BROADCAST_COMPOSE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_broadcast_message),
+                CallbackQueryHandler(handle_broadcast_type, pattern=r"^admin_broadcast_type_"),
                 CallbackQueryHandler(show_broadcast_menu, pattern="^admin_broadcast$"),
+            ],
+            AdminState.BROADCAST_COMPOSE_TEXT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_broadcast_text),
+                CallbackQueryHandler(show_broadcast_menu, pattern="^admin_broadcast$"),
+            ],
+            AdminState.BROADCAST_COMPOSE_IMAGE: [
+                MessageHandler(filters.PHOTO, handle_broadcast_image),
+                CallbackQueryHandler(show_broadcast_menu, pattern="^admin_broadcast$"),
+            ],
+            AdminState.BROADCAST_ADD_BUTTONS: [
+                CallbackQueryHandler(prompt_button_details, pattern="^admin_broadcast_add_button$"),
+                CallbackQueryHandler(confirm_broadcast, pattern="^admin_broadcast_confirm_preview$"),
+                CallbackQueryHandler(show_broadcast_menu, pattern="^admin_broadcast$"),
+            ],
+            AdminState.BROADCAST_BUTTON_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button_input),
+                CallbackQueryHandler(prompt_add_buttons, pattern="^admin_broadcast_buttons_back$"),
             ],
             AdminState.BROADCAST_CONFIRM: [
                 CallbackQueryHandler(send_broadcast, pattern="^admin_broadcast_send$"),

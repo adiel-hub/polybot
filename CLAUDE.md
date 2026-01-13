@@ -130,7 +130,7 @@ Status:      ✅ Success  ❌ Failed  ⏳ Pending  ⚠️ Warning  ℹ️ Info
 
 ## Testing
 
-- **No mock data**: Never use mock data in tests. Always test with real data or realistic test fixtures.
+- **No mock data**: Never use mock data in tests. Always test with real data or realistic test fixtures using the implemented methods and code
 - **Test coverage**: Create tests for every new method or code addition. No code should be merged without corresponding tests.
 - **Test location**: All tests must be in the `tests/` folder, mirroring the source structure:
   ```

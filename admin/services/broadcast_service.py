@@ -47,6 +47,8 @@ class BroadcastService:
         message: str,
         filter_type: str = "all",
         progress_callback: Optional[Callable[[int, int, int], None]] = None,
+        image_file_id: Optional[str] = None,
+        reply_markup: Optional[Any] = None,
     ) -> dict[str, Any]:
         """
         Send message to filtered users.
@@ -55,6 +57,8 @@ class BroadcastService:
             message: The message text to send
             filter_type: "all", "active", or "with_balance"
             progress_callback: Optional callback(sent, failed, total)
+            image_file_id: Optional Telegram file_id for image broadcast
+            reply_markup: Optional InlineKeyboardMarkup for buttons
 
         Returns:
             Dict with sent, failed, and total counts
@@ -67,11 +71,23 @@ class BroadcastService:
 
         for i, user in enumerate(users):
             try:
-                await self.bot.send_message(
-                    chat_id=user["telegram_id"],
-                    text=message,
-                    parse_mode="Markdown",
-                )
+                # Send image with caption if image_file_id provided
+                if image_file_id:
+                    await self.bot.send_photo(
+                        chat_id=user["telegram_id"],
+                        photo=image_file_id,
+                        caption=message,
+                        parse_mode="Markdown",
+                        reply_markup=reply_markup,
+                    )
+                else:
+                    # Send text message
+                    await self.bot.send_message(
+                        chat_id=user["telegram_id"],
+                        text=message,
+                        parse_mode="Markdown",
+                        reply_markup=reply_markup,
+                    )
                 sent += 1
             except Exception as e:
                 failed += 1
