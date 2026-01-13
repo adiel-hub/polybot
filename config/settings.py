@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     poly_builder_secret: str = Field(default="", description="Polymarket Builder secret")
     poly_builder_passphrase: str = Field(default="", description="Polymarket Builder passphrase")
 
+    # Integration Test Configuration
+    test_funding_wallet_private_key: str = Field(default="", description="Test wallet private key for funding integration tests")
+    test_funding_wallet_address: str = Field(default="", description="Test wallet address")
+    test_deposit_amount: float = Field(default=10.0, description="Test deposit amount in USDC")
+    test_trade_amount: float = Field(default=5.0, description="Test trade amount in USDC")
+    test_withdrawal_amount: float = Field(default=3.0, description="Test withdrawal amount in USDC")
+
     model_config = ConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
