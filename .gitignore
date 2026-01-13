@@ -52,3 +52,4 @@ Thumbs.db
 # Temporary test files (these should be in tests/ folder)
 # Only ignore if they're temporary development files
 # test_*.py files in root should be moved to tests/
+test.env
