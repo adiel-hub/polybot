@@ -215,12 +215,12 @@ class PriceSubscriber:
                 await self.bot_send_message(
                     chat_id=user.telegram_id,
                     text=(
-                        f"*Stop Loss Triggered!*\n\n"
-                        f"Market: {position.market_question[:40]}...\n"
-                        f"Trigger Price: {sl['trigger_price'] * 100:.0f}c\n"
-                        f"Current Price: {current_price * 100:.0f}c\n"
-                        f"Sold: {sell_size:.2f} shares\n\n"
-                        f"Order ID: `{result.get('order_id', 'N/A')}`"
+                        f"🛡️ *Stop Loss Triggered!*\n\n"
+                        f"📊 Market: {position.market_question[:40]}...\n"
+                        f"🎯 Trigger Price: `{sl['trigger_price'] * 100:.0f}c`\n"
+                        f"💰 Current Price: `{current_price * 100:.0f}c`\n"
+                        f"📉 Sold: `{sell_size:.2f}` shares\n\n"
+                        f"🔗 Order ID: `{result.get('order_id', 'N/A')}`"
                     ),
                     parse_mode="Markdown",
                 )

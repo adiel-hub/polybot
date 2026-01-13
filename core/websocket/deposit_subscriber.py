@@ -274,10 +274,10 @@ class DepositSubscriber:
                     await self.bot_send_message(
                         chat_id=user.telegram_id,
                         text=(
-                            f"*Deposit Received!*\n\n"
-                            f"Amount: ${amount:.2f} USDC\n"
-                            f"TX: `{tx_hash[:16]}...`\n\n"
-                            f"Your balance has been updated."
+                            f"💰 *Deposit Received!*\n\n"
+                            f"💵 Amount: `${amount:.2f}` USDC\n"
+                            f"🔗 TX: `{tx_hash[:16]}...`\n\n"
+                            f"✅ Your balance has been updated."
                         ),
                         parse_mode="Markdown",
                     )

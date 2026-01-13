@@ -191,12 +191,12 @@ class CopyTradeSubscriber:
                         await self.bot_send_message(
                             chat_id=user.telegram_id,
                             text=(
-                                f"*Trade Copied!*\n\n"
-                                f"From: {subscription.get('display_name', 'Trader')}\n"
-                                f"Market: {(market_question or '')[:40]}...\n"
-                                f"Side: {outcome}\n"
-                                f"Amount: ${trade_amount:.2f}\n\n"
-                                f"Order ID: `{result.get('order_id', 'N/A')}`"
+                                f"👥 *Trade Copied!*\n\n"
+                                f"👤 From: {subscription.get('display_name', 'Trader')}\n"
+                                f"📊 Market: {(market_question or '')[:40]}...\n"
+                                f"🎯 Side: {outcome}\n"
+                                f"💵 Amount: `${trade_amount:.2f}`\n\n"
+                                f"🔗 Order ID: `{result.get('order_id', 'N/A')}`"
                             ),
                             parse_mode="Markdown",
                         )

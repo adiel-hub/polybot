@@ -5,17 +5,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Run the bot (requires Python 3.11+)
-/opt/homebrew/bin/python3.11 run.py
+# Activate virtual environment (Python 3.12)
+source .venv/bin/activate
+
+# Run the bot
+python run.py
 
 # Install dependencies
-/opt/homebrew/bin/python3.11 -m pip install -r requirements.txt
+pip install -r requirements.txt
 
 # Run tests
-/opt/homebrew/bin/python3.11 -m pytest
+pytest
 
 # Run single test
-/opt/homebrew/bin/python3.11 -m pytest tests/test_file.py::test_function
+pytest tests/test_file.py::test_function
 
 # Format code
 black .
@@ -51,17 +54,17 @@ core/                   → External integrations
   wallet/
     generator.py        → eth-account wallet creation
     encryption.py       → Fernet encryption for private keys
+  websocket/            → Real-time WebSocket subscriptions
+    manager.py          → WebSocket connection manager with auto-reconnect
+    price_subscriber.py → Polymarket price feeds (stop loss + position sync)
+    deposit_subscriber.py → Alchemy WebSocket for USDC deposits
+    copy_trade_subscriber.py → Polymarket user channel for copy trading
+    setup.py            → WebSocket service initialization
 
 database/               → SQLite persistence
   models/               → Dataclasses (User, Wallet, Order, Position, etc.)
   repositories/         → CRUD operations per model
   connection.py         → aiosqlite connection + table initialization
-
-jobs/                   → Background tasks (APScheduler via python-telegram-bot)
-  deposit_checker.py    → Polls for USDC deposits (30s)
-  stop_loss_monitor.py  → Checks prices for stop loss triggers (10s)
-  position_sync.py      → Syncs positions from Polymarket (5min)
-  copy_trade_sync.py    → Mirrors copied trader orders (30s)
 ```
 
 ### Key Patterns
@@ -110,6 +113,14 @@ Settings:    ⚙️ Settings  🔔 Notifications  🛡️ Security  👤 Profile
 Status:      ✅ Success  ❌ Failed  ⏳ Pending  ⚠️ Warning  ℹ️ Info
 ```
 
+## Git Workflow
+
+**Always commit and push after any code change:**
+- After completing any code modification, immediately create a git commit with a descriptive message
+- Push commits to the remote repository right after committing
+- Use conventional commit messages (e.g., `feat:`, `fix:`, `refactor:`, `style:`, `docs:`)
+- Group related changes into a single commit when they belong together
+
 ## Code Style
 
 - **File length**: Keep files under 300-400 lines. Split large files into smaller modules.
@@ -140,4 +151,5 @@ Copy `.env.example` to `.env` and configure:
 - `TELEGRAM_BOT_TOKEN` - From @BotFather
 - `MASTER_ENCRYPTION_KEY` - Generate with `Fernet.generate_key()`
 - `POLYGON_RPC_URL` - Polygon RPC endpoint
+- `ALCHEMY_API_KEY` - For real-time deposit detection via WebSocket (free at alchemy.com)
 - `GAS_SPONSOR_PRIVATE_KEY` - Wallet with POL for withdrawal gas fees

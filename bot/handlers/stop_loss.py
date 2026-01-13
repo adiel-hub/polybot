@@ -26,7 +26,7 @@ async def show_stop_loss_menu(
 
     db_user = await user_service.get_user(user.id)
     if not db_user:
-        text = "User not found. Please /start to register."
+        text = "❌ User not found. Please /start to register."
         if query:
             await query.edit_message_text(text)
         return ConversationState.MAIN_MENU
@@ -40,9 +40,9 @@ async def show_stop_loss_menu(
 
     if not positions:
         text = (
-            "*Stop Loss*\n\n"
-            "You don't have any positions to protect.\n\n"
-            "Open positions first, then set stop losses!"
+            "🛡️ *Stop Loss*\n\n"
+            "📭 You don't have any positions to protect.\n\n"
+            "💹 Open positions first, then set stop losses!"
         )
         keyboard = get_back_keyboard("menu_main")
 
@@ -50,21 +50,21 @@ async def show_stop_loss_menu(
             await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
         return ConversationState.MAIN_MENU
 
-    text = f"*Stop Loss Orders*\n\nActive Stop Losses: {len(stop_losses)}\n\n"
+    text = f"🛡️ *Stop Loss Orders*\n\n✅ Active Stop Losses: `{len(stop_losses)}`\n\n"
 
     # Show existing stop losses
     if stop_losses:
-        text += "*Current Stop Losses:*\n"
+        text += "📋 *Current Stop Losses:*\n"
         for sl in stop_losses:
             position = await position_repo.get_by_id(sl.position_id)
             if position:
                 text += (
-                    f"- {position.market_question[:30]}...\n"
-                    f"  Trigger: {sl.trigger_price * 100:.0f}c | "
-                    f"Sell: {sl.sell_percentage}%\n\n"
+                    f"├ {position.market_question[:30]}...\n"
+                    f"└ 🎯 Trigger: `{sl.trigger_price * 100:.0f}c` │ "
+                    f"📉 Sell: `{sl.sell_percentage}%`\n\n"
                 )
 
-    text += "\n*Positions without Stop Loss:*\n"
+    text += "\n⚠️ *Positions without Stop Loss:*\n"
 
     keyboard = []
     positions_without_sl = [
@@ -76,19 +76,19 @@ async def show_stop_loss_menu(
         for i, position in enumerate(positions_without_sl[:5], 1):
             text += (
                 f"{i}. {position.market_question[:35]}...\n"
-                f"   {position.outcome}: {position.size:.2f} shares\n\n"
+                f"   🎯 {position.outcome}: `{position.size:.2f}` shares\n\n"
             )
             keyboard.append([
                 InlineKeyboardButton(
-                    f"{i}. Add Stop Loss",
+                    f"🛡️ {i}. Add Stop Loss",
                     callback_data=f"sl_add_{position.id}",
                 )
             ])
     else:
-        text += "All positions have stop losses!\n"
+        text += "✅ All positions have stop losses!\n"
 
     keyboard.append([
-        InlineKeyboardButton("Main Menu", callback_data="menu_main"),
+        InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
     ])
 
     if query:
@@ -119,18 +119,18 @@ async def handle_stop_loss_callback(
         position = await position_repo.get_by_id(position_id)
 
         if not position:
-            await query.edit_message_text("Position not found.")
+            await query.edit_message_text("❌ Position not found.")
             return ConversationState.MAIN_MENU
 
         current_price = position.current_price or position.average_entry_price
 
         await query.edit_message_text(
-            f"*Set Stop Loss*\n\n"
-            f"Position: {position.market_question[:40]}...\n"
-            f"Current Price: {current_price * 100:.0f}c\n"
-            f"Entry Price: {position.average_entry_price * 100:.0f}c\n\n"
-            f"Enter trigger price (1-99 cents):\n"
-            f"Stop loss will execute when price falls to this level.",
+            f"🛡️ *Set Stop Loss*\n\n"
+            f"📊 Position: {position.market_question[:40]}...\n"
+            f"💰 Current Price: `{current_price * 100:.0f}c`\n"
+            f"📈 Entry Price: `{position.average_entry_price * 100:.0f}c`\n\n"
+            f"✏️ Enter trigger price (1-99 cents):\n"
+            f"💡 _Stop loss will execute when price falls to this level._",
             reply_markup=get_back_keyboard("menu_stoploss"),
             parse_mode="Markdown",
         )
@@ -142,7 +142,7 @@ async def handle_stop_loss_callback(
         stop_loss_repo = StopLossRepository(db)
         await stop_loss_repo.deactivate(sl_id)
 
-        await query.edit_message_text("Stop loss removed.")
+        await query.edit_message_text("✅ Stop loss removed.")
         return await show_stop_loss_menu(update, context)
 
     return ConversationState.SELECT_POSITION
@@ -159,16 +159,16 @@ async def handle_trigger_price_input(
 
     if price is None:
         await update.message.reply_text(
-            "Invalid price. Please enter a number between 1 and 99 cents."
+            "❌ Invalid price. Please enter a number between 1 and 99 cents."
         )
         return ConversationState.ENTER_TRIGGER_PRICE
 
     context.user_data["sl_trigger_price"] = price
 
     await update.message.reply_text(
-        f"*Trigger Price: {price * 100:.0f}c*\n\n"
-        f"Enter percentage of position to sell (1-100):\n"
-        f"(e.g., 100 for full position, 50 for half)",
+        f"🎯 *Trigger Price: `{price * 100:.0f}c`*\n\n"
+        f"📊 Enter percentage of position to sell (1-100):\n"
+        f"💡 _(e.g., 100 for full position, 50 for half)_",
         reply_markup=get_back_keyboard("menu_stoploss"),
         parse_mode="Markdown",
     )
@@ -187,7 +187,7 @@ async def handle_sell_percentage_input(
 
     if percentage is None:
         await update.message.reply_text(
-            "Invalid percentage. Please enter a number between 1 and 100."
+            "❌ Invalid percentage. Please enter a number between 1 and 100."
         )
         return ConversationState.ENTER_SELL_PERCENTAGE
 
@@ -202,17 +202,17 @@ async def handle_sell_percentage_input(
 
     keyboard = [
         [
-            InlineKeyboardButton("Confirm", callback_data="sl_confirm"),
-            InlineKeyboardButton("Cancel", callback_data="menu_stoploss"),
+            InlineKeyboardButton("✅ Confirm", callback_data="sl_confirm"),
+            InlineKeyboardButton("❌ Cancel", callback_data="menu_stoploss"),
         ]
     ]
 
     await update.message.reply_text(
-        f"*Confirm Stop Loss*\n\n"
-        f"Position: {position.market_question[:40] if position else ''}...\n"
-        f"Trigger Price: {trigger_price * 100:.0f}c\n"
-        f"Sell: {percentage}% of position\n\n"
-        f"Confirm?",
+        f"📋 *Confirm Stop Loss*\n\n"
+        f"📊 Position: {position.market_question[:40] if position else ''}...\n"
+        f"🎯 Trigger Price: `{trigger_price * 100:.0f}c`\n"
+        f"📉 Sell: `{percentage}%` of position\n\n"
+        f"✅ Confirm?",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
@@ -234,7 +234,7 @@ async def confirm_stop_loss(
 
     db_user = await user_service.get_user(user.id)
     if not db_user:
-        await query.edit_message_text("User not found.")
+        await query.edit_message_text("❌ User not found.")
         return ConversationState.MAIN_MENU
 
     position_id = context.user_data.get("sl_position_id")
@@ -246,7 +246,7 @@ async def confirm_stop_loss(
 
     position = await position_repo.get_by_id(position_id)
     if not position:
-        await query.edit_message_text("Position not found.")
+        await query.edit_message_text("❌ Position not found.")
         return ConversationState.MAIN_MENU
 
     try:
@@ -259,17 +259,17 @@ async def confirm_stop_loss(
         )
 
         await query.edit_message_text(
-            f"*Stop Loss Created!*\n\n"
-            f"Position: {position.market_question[:40]}...\n"
-            f"Trigger: {trigger_price * 100:.0f}c\n"
-            f"Sell: {sell_percentage}%\n\n"
-            f"You'll be notified when the stop loss triggers.",
+            f"✅ *Stop Loss Created!*\n\n"
+            f"📊 Position: {position.market_question[:40]}...\n"
+            f"🎯 Trigger: `{trigger_price * 100:.0f}c`\n"
+            f"📉 Sell: `{sell_percentage}%`\n\n"
+            f"🔔 You'll be notified when the stop loss triggers.",
             parse_mode="Markdown",
         )
 
     except Exception as e:
         logger.error(f"Failed to create stop loss: {e}")
-        await query.edit_message_text(f"Failed to create stop loss: {str(e)}")
+        await query.edit_message_text(f"❌ Failed to create stop loss: {str(e)}")
 
     # Clear context
     for key in ["sl_position_id", "sl_trigger_price", "sl_sell_percentage"]:
