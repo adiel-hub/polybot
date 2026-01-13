@@ -224,10 +224,26 @@ async def confirm_order(
                 parse_mode="Markdown",
             )
         else:
-            await query.edit_message_text(
+            error_msg = result.get('error', 'Unknown error')
+            text = (
                 f"❌ *Order Failed*\n\n"
-                f"⚠️ Error: {result.get('error', 'Unknown error')}\n\n"
-                f"🔄 Please try again.",
+                f"⚠️ Error: {error_msg}\n\n"
+                f"🔄 Please try again."
+            )
+
+            # Add deposit button if insufficient balance
+            if "Insufficient balance" in error_msg:
+                keyboard = [
+                    [InlineKeyboardButton("💳 Deposit Funds", callback_data="wallet_deposit")],
+                    [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+            else:
+                reply_markup = None
+
+            await query.edit_message_text(
+                text,
+                reply_markup=reply_markup,
                 parse_mode="Markdown",
             )
 
@@ -477,10 +493,26 @@ async def confirm_sell(
                 parse_mode="Markdown",
             )
         else:
-            await query.edit_message_text(
+            error_msg = result.get('error', 'Unknown error')
+            text = (
                 f"❌ *Sell Order Failed*\n\n"
-                f"⚠️ Error: {result.get('error', 'Unknown error')}\n\n"
-                f"🔄 Please try again.",
+                f"⚠️ Error: {error_msg}\n\n"
+                f"🔄 Please try again."
+            )
+
+            # Add deposit button if insufficient balance (for gas fees)
+            if "Insufficient balance" in error_msg:
+                keyboard = [
+                    [InlineKeyboardButton("💳 Deposit Funds", callback_data="wallet_deposit")],
+                    [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+            else:
+                reply_markup = None
+
+            await query.edit_message_text(
+                text,
+                reply_markup=reply_markup,
                 parse_mode="Markdown",
             )
 
