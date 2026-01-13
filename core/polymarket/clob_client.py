@@ -366,7 +366,11 @@ class PolymarketCLOB:
             Dict with allowance information
         """
         try:
-            result = self.client.get_balance_allowance()
+            params = BalanceAllowanceParams(
+                asset_type=AssetType.COLLATERAL,
+                signature_type=0,
+            )
+            result = self.client.get_balance_allowance(params)
             return result if result else {}
         except Exception as e:
             logger.error(f"Check allowance failed: {e}")
