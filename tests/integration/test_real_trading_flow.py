@@ -18,7 +18,7 @@ from database.repositories.position_repo import PositionRepository
 from database.repositories.wallet_repo import WalletRepository
 from database.repositories.order_repo import OrderRepository
 from core.blockchain.withdrawals import WithdrawalManager
-from core.polymarket.gamma_client import GammaClient
+from core.polymarket.gamma_client import GammaMarketClient
 from config.settings import settings
 
 
@@ -30,7 +30,7 @@ async def test_full_trading_cycle(
     real_user_service: UserService,
     real_trading_service: TradingService,
     real_withdrawal_manager: WithdrawalManager,
-    real_gamma_client: GammaClient,
+    real_gamma_client: GammaMarketClient,
     funded_test_user,
     external_wallet,
     web3_polygon: Web3,
@@ -41,7 +41,7 @@ async def test_full_trading_cycle(
 
     Flow:
     1. Use funded test user (real USDC deposited)
-    2. Fetch real market from Polymarket via GammaClient
+    2. Fetch real market from Polymarket via GammaMarketClient
     3. Place real market buy order via TradingService
     4. Verify real position created via PositionRepository
     5. Close position with real sell order
@@ -66,28 +66,26 @@ async def test_full_trading_cycle(
 
     assert initial_balance >= settings.test_trade_amount, f"Insufficient test funds (need ${settings.test_trade_amount})"
 
-    # Get a real market using REAL GammaClient
+    # Get a real market using REAL GammaMarketClient
     print(f"🔍 Fetching real markets from Polymarket...")
-    markets = await real_gamma_client.get_markets(limit=20, offset=0)
+    markets = await real_gamma_client.get_trending_markets(limit=20)
     assert len(markets) > 0, "No markets available"
 
     # Find an active market with good liquidity
     test_market = None
     for market in markets:
-        if market.get("active") and market.get("liquidity", 0) > 1000:
+        if market.is_active and market.liquidity > 1000:
             test_market = market
             break
 
     assert test_market is not None, "No suitable active markets found"
 
-    # Parse market data
-    import json
-    clob_token_ids = json.loads(test_market["clobTokenIds"]) if isinstance(test_market["clobTokenIds"], str) else test_market["clobTokenIds"]
-    token_id = clob_token_ids[0]  # YES token
+    # Use YES token
+    token_id = test_market.yes_token_id
 
-    print(f"✅ Selected market: {test_market['question']}")
+    print(f"✅ Selected market: {test_market.question}")
     print(f"   Token ID: {token_id}")
-    print(f"   Liquidity: ${test_market.get('liquidity', 0):,.2f}")
+    print(f"   Liquidity: ${test_market.liquidity:,.2f}")
 
     # Execute REAL trade via TradingService
     trade_amount = settings.test_trade_amount
@@ -95,12 +93,12 @@ async def test_full_trading_cycle(
 
     result = await real_trading_service.place_order(
         user_id=user.id,
-        market_condition_id=test_market["conditionId"],
+        market_condition_id=test_market.condition_id,
         token_id=token_id,
         outcome="YES",
         order_type="MARKET",
         amount=trade_amount,
-        market_question=test_market["question"],
+        market_question=test_market.question,
     )
 
     # Verify trade execution
@@ -208,7 +206,7 @@ async def test_full_trading_cycle(
 @pytest.mark.asyncio
 async def test_place_and_cancel_limit_order(
     real_trading_service: TradingService,
-    real_gamma_client: GammaClient,
+    real_gamma_client: GammaMarketClient,
     funded_test_user,
     order_repo: OrderRepository,
 ):
@@ -223,28 +221,26 @@ async def test_place_and_cancel_limit_order(
     print(f"{'='*80}\n")
 
     # Get a real market
-    markets = await real_gamma_client.get_markets(limit=10, offset=0)
+    markets = await real_gamma_client.get_trending_markets(limit=10)
     assert len(markets) > 0, "No markets available"
 
     test_market = markets[0]
-    import json
-    clob_token_ids = json.loads(test_market["clobTokenIds"]) if isinstance(test_market["clobTokenIds"], str) else test_market["clobTokenIds"]
-    token_id = clob_token_ids[0]
+    token_id = test_market.yes_token_id
 
-    print(f"📋 Market: {test_market['question']}")
+    print(f"📋 Market: {test_market.question}")
 
     # Place limit order at very low price (unlikely to fill)
     print(f"\n🔄 Placing limit order at $0.01...")
 
     result = await real_trading_service.place_order(
         user_id=user.id,
-        market_condition_id=test_market["conditionId"],
+        market_condition_id=test_market.condition_id,
         token_id=token_id,
         outcome="YES",
         order_type="LIMIT",
         price=0.01,  # Very low - won't fill immediately
         amount=settings.test_trade_amount,
-        market_question=test_market["question"],
+        market_question=test_market.question,
     )
 
     assert result["success"], f"Limit order failed: {result.get('error')}"
@@ -285,7 +281,7 @@ async def test_place_and_cancel_limit_order(
 @pytest.mark.asyncio
 async def test_insufficient_balance(
     real_trading_service: TradingService,
-    real_gamma_client: GammaClient,
+    real_gamma_client: GammaMarketClient,
     test_user,  # Unfunded user
 ):
     """Test that trading fails gracefully with insufficient balance.
@@ -301,15 +297,13 @@ async def test_insufficient_balance(
     print(f"{'='*80}\n")
 
     # Get a real market
-    markets = await real_gamma_client.get_markets(limit=5, offset=0)
+    markets = await real_gamma_client.get_trending_markets(limit=5)
     assert len(markets) > 0, "No markets available"
 
     test_market = markets[0]
-    import json
-    clob_token_ids = json.loads(test_market["clobTokenIds"]) if isinstance(test_market["clobTokenIds"], str) else test_market["clobTokenIds"]
-    token_id = clob_token_ids[0]
+    token_id = test_market.yes_token_id
 
-    print(f"📋 Market: {test_market['question']}")
+    print(f"📋 Market: {test_market.question}")
     print(f"💰 User balance: ${wallet.usdc_balance:.2f}")
 
     # Try to place order exceeding balance
@@ -317,12 +311,12 @@ async def test_insufficient_balance(
 
     result = await real_trading_service.place_order(
         user_id=user.id,
-        market_condition_id=test_market["conditionId"],
+        market_condition_id=test_market.condition_id,
         token_id=token_id,
         outcome="YES",
         order_type="MARKET",
         amount=1000.0,  # More than balance
-        market_question=test_market["question"],
+        market_question=test_market.question,
     )
 
     # Verify failure

@@ -34,10 +34,11 @@ async def show_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     wallet = await user_service.get_wallet(user.id)
 
     if not positions:
+        balance = wallet.usdc_balance if wallet else 0
         text = (
             "📊 *Portfolio*\n\n"
             "📭 You don't have any positions yet.\n\n"
-            f"💵 Tradable Balance: `${wallet.usdc_balance:.2f if wallet else 0:.2f}`\n\n"
+            f"💵 Tradable Balance: `${balance:.2f}`\n\n"
             "💹 Browse markets to start trading!"
         )
 

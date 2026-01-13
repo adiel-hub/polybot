@@ -39,7 +39,7 @@ from services.trading_service import TradingService
 from core.wallet.encryption import KeyEncryption
 from core.wallet.generator import WalletGenerator
 from core.blockchain.withdrawals import WithdrawalManager
-from core.polymarket.gamma_client import GammaClient
+from core.polymarket.gamma_client import GammaMarketClient
 from config.settings import settings
 from config.constants import USDC_ADDRESS, USDC_E_ADDRESS, USDC_DECIMALS
 
@@ -142,9 +142,9 @@ async def real_withdrawal_manager() -> WithdrawalManager:
 
 
 @pytest_asyncio.fixture
-async def real_gamma_client() -> GammaClient:
-    """Real GammaClient for fetching market data from Polymarket."""
-    return GammaClient()
+async def real_gamma_client() -> GammaMarketClient:
+    """Real GammaMarketClient for fetching market data from Polymarket."""
+    return GammaMarketClient()
 
 
 # ================================================================================
