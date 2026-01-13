@@ -45,6 +45,10 @@ class User:
     commission_balance: float = 0.0
     total_earned: float = 0.0
     total_claimed: float = 0.0
+    # 2FA fields
+    totp_secret: Optional[bytes] = None
+    totp_secret_salt: Optional[bytes] = None
+    totp_verified_at: Optional[datetime] = None
 
     @classmethod
     def from_row(cls, row) -> "User":
@@ -67,6 +71,9 @@ class User:
             commission_balance=float(row["commission_balance"]) if "commission_balance" in row.keys() and row["commission_balance"] else 0.0,
             total_earned=float(row["total_earned"]) if "total_earned" in row.keys() and row["total_earned"] else 0.0,
             total_claimed=float(row["total_claimed"]) if "total_claimed" in row.keys() and row["total_claimed"] else 0.0,
+            totp_secret=row["totp_secret"] if "totp_secret" in row.keys() else None,
+            totp_secret_salt=row["totp_secret_salt"] if "totp_secret_salt" in row.keys() else None,
+            totp_verified_at=row["totp_verified_at"] if "totp_verified_at" in row.keys() else None,
         )
 
     @property

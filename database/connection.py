@@ -47,6 +47,9 @@ class Database:
                 license_accepted_at TIMESTAMP,
                 is_active INTEGER DEFAULT 1,
                 settings TEXT DEFAULT '{}',
+                totp_secret BLOB,
+                totp_secret_salt BLOB,
+                totp_verified_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -246,9 +249,9 @@ class Database:
         columns = [row[1] for row in await cursor.fetchall()]
 
         if "referral_code" not in columns:
-            await conn.execute("ALTER TABLE users ADD COLUMN referral_code TEXT UNIQUE")
+            await conn.execute("ALTER TABLE users ADD COLUMN referral_code TEXT")
         if "referrer_id" not in columns:
-            await conn.execute("ALTER TABLE users ADD COLUMN referrer_id INTEGER REFERENCES users(id)")
+            await conn.execute("ALTER TABLE users ADD COLUMN referrer_id INTEGER")
         if "commission_balance" not in columns:
             await conn.execute("ALTER TABLE users ADD COLUMN commission_balance REAL DEFAULT 0.0")
         if "total_earned" not in columns:
@@ -257,7 +260,8 @@ class Database:
             await conn.execute("ALTER TABLE users ADD COLUMN total_claimed REAL DEFAULT 0.0")
 
         # Create indexes for referral columns (safe to run even if they exist)
-        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)")
+        # Note: UNIQUE constraint is enforced via unique index
+        await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_referrer_id ON users(referrer_id)")
 
         await conn.commit()
