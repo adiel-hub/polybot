@@ -201,6 +201,34 @@ class GammaMarketClient:
             logger.error(f"Failed to fetch market {condition_id}: {e}")
             return None
 
+    async def get_market_by_slug(self, slug: str) -> Optional[Market]:
+        """
+        Get market by URL slug.
+
+        Args:
+            slug: Market slug from URL (e.g., 'bitcoin-100k-2025')
+
+        Returns:
+            Market or None if not found
+        """
+        try:
+            client = await self._get_client()
+
+            response = await client.get(f"{self.host}/markets/slug/{slug}")
+
+            if response.status_code == 404:
+                logger.warning(f"Market slug not found: {slug}")
+                return None
+
+            response.raise_for_status()
+
+            data = response.json()
+            return Market.from_api(data)
+
+        except Exception as e:
+            logger.error(f"Failed to fetch market by slug '{slug}': {e}")
+            return None
+
     async def search_markets(self, query: str, limit: int = 20) -> List[Market]:
         """
         Search markets by keyword.

@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 from bot.conversations.states import ConversationState
 from bot.keyboards.main_menu import get_browse_keyboard
 from bot.keyboards.common import get_back_keyboard
+from utils.url_parser import is_polymarket_url, extract_slug_from_url, extract_url_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,8 @@ async def show_browse_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     text = (
         "🔍 *Market Search*\n\n"
-        '✏️ Type any keyword to search (e.g. "bitcoin", "trump")\n\n'
+        '✏️ Type any keyword to search (e.g. "bitcoin", "trump")\n'
+        '🔗 Or paste a Polymarket URL (e.g. polymarket.com/event/...)\n\n'
         "📂 Or browse by:"
     )
 
@@ -270,7 +272,7 @@ async def handle_search_input(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> int:
-    """Handle search keyword input."""
+    """Handle search keyword input or Polymarket URL."""
     if not context.user_data.get("awaiting_search"):
         return ConversationState.MAIN_MENU
 
@@ -279,7 +281,88 @@ async def handle_search_input(
 
     context.user_data["awaiting_search"] = False
 
-    # Search markets
+    # Check if input is a Polymarket URL
+    if is_polymarket_url(query_text):
+        url = extract_url_from_text(query_text)
+        slug = extract_slug_from_url(url) if url else None
+
+        if not slug:
+            # Show error with format help
+            await update.message.reply_text(
+                "❌ Invalid Polymarket URL format.\n\n"
+                "Expected:\n"
+                "• https://polymarket.com/event/your-market\n"
+                "• https://polymarket.com/market/your-market",
+                reply_markup=get_back_keyboard("menu_browse"),
+            )
+            return ConversationState.BROWSE_RESULTS
+
+        # Fetch market by slug
+        market = await market_service.get_market_by_slug(slug)
+
+        if not market:
+            await update.message.reply_text(
+                f"❌ Market not found for slug: `{slug}`\n\n"
+                "The market may have been removed or the URL is invalid.",
+                reply_markup=get_back_keyboard("menu_browse"),
+                parse_mode="Markdown",
+            )
+            return ConversationState.BROWSE_RESULTS
+
+        # Store market and display details
+        context.user_data["current_market"] = {
+            "condition_id": market.condition_id,
+            "question": market.question,
+            "yes_token_id": market.yes_token_id,
+            "no_token_id": market.no_token_id,
+            "yes_price": market.yes_price,
+            "no_price": market.no_price,
+        }
+
+        # Format market details
+        yes_cents = market.yes_price * 100
+        no_cents = market.no_price * 100
+
+        text = (
+            f"🔗 *Market from URL*\n"
+            f"{'─' * 35}\n\n"
+            f"📊 {market.question}\n\n"
+            f"💰 *Current Prices*\n"
+            f"├ ✅ Yes: `{yes_cents:.1f}c`\n"
+            f"└ ❌ No: `{no_cents:.1f}c`\n\n"
+            f"📈 *Market Stats*\n"
+            f"├ 📊 Volume (All): `${market.total_volume:,.2f}`\n"
+            f"├ 📊 Volume (24h): `${market.volume_24h:,.2f}`\n"
+            f"└ 💧 Liquidity: `${market.liquidity:,.2f}`\n"
+        )
+
+        if market.end_date:
+            text += f"\n⏰ *Timeline*\n└ 📅 Expires: {market.end_date}\n"
+
+        keyboard = [
+            [
+                InlineKeyboardButton("📈 Buy Yes", callback_data="trade_buy_yes"),
+                InlineKeyboardButton("📉 Buy No", callback_data="trade_buy_no"),
+            ],
+            [
+                InlineKeyboardButton("📊 Limit Yes", callback_data="trade_limit_yes"),
+                InlineKeyboardButton("📊 Limit No", callback_data="trade_limit_no"),
+            ],
+            [
+                InlineKeyboardButton("🔙 Browse", callback_data="menu_browse"),
+                InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
+            ],
+        ]
+
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+        return ConversationState.MARKET_DETAIL
+
+    # If not URL, continue with existing keyword search logic
     markets = await market_service.search_markets(query_text, limit=5)
 
     if not markets:

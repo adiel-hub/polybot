@@ -69,6 +69,10 @@ class MarketService:
         """Get detailed market information."""
         return await self.gamma_client.get_market_by_condition_id(condition_id)
 
+    async def get_market_by_slug(self, slug: str) -> Optional[Market]:
+        """Get market by URL slug."""
+        return await self.gamma_client.get_market_by_slug(slug)
+
     async def get_token_price(self, token_id: str) -> Optional[float]:
         """Get current price for a token."""
         return await self.gamma_client.get_market_price(token_id)
