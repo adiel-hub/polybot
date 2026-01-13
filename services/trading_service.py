@@ -143,6 +143,30 @@ class TradingService:
                 )
                 return {"success": False, "error": "Trading client error"}
 
+            # Check and set allowance if needed
+            try:
+                allowance_info = await client.check_allowance()
+                logger.info(f"Current allowance: {allowance_info}")
+
+                # If allowance is insufficient, set it
+                # Note: This requires a blockchain transaction and may take a few seconds
+                if not allowance_info or allowance_info.get("allowance", 0) < amount:
+                    logger.info("Setting USDC allowance for CLOB contract...")
+                    allowance_set = await client.set_allowance()
+                    if not allowance_set:
+                        await self.order_repo.update_status(
+                            db_order.id,
+                            "FAILED",
+                            error_message="Failed to set USDC allowance",
+                        )
+                        return {
+                            "success": False,
+                            "error": "Failed to approve USDC spending. Please try again.",
+                        }
+            except Exception as e:
+                logger.error(f"Allowance check/set failed: {e}")
+                # Continue anyway - the order placement might still work
+
             # Place order
             if order_type.upper() == "MARKET":
                 result = await client.place_market_order(

@@ -5,7 +5,14 @@ from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import ApiCreds, MarketOrderArgs, OrderArgs, OrderType
+from py_clob_client.clob_types import (
+    ApiCreds,
+    MarketOrderArgs,
+    OrderArgs,
+    OrderType,
+    BalanceAllowanceParams,
+    AssetType,
+)
 from py_clob_client.order_builder.constants import BUY, SELL
 from py_builder_signing_sdk.config import BuilderConfig
 from py_builder_signing_sdk.sdk_types import BuilderApiKeyCreds
@@ -350,3 +357,41 @@ class PolymarketCLOB:
         except Exception as e:
             logger.error(f"Get builder trades failed: {e}")
             return []
+
+    async def check_allowance(self) -> Dict[str, Any]:
+        """
+        Check current USDC allowance for the CLOB contract.
+
+        Returns:
+            Dict with allowance information
+        """
+        try:
+            result = self.client.get_balance_allowance()
+            return result if result else {}
+        except Exception as e:
+            logger.error(f"Check allowance failed: {e}")
+            return {}
+
+    async def set_allowance(self, amount: Optional[float] = None) -> bool:
+        """
+        Set USDC allowance for the CLOB contract.
+
+        Args:
+            amount: Amount to approve (None for unlimited)
+
+        Returns:
+            True if successful
+        """
+        try:
+            # Create allowance params for USDC
+            params = BalanceAllowanceParams(
+                asset_type=AssetType.COLLATERAL,  # USDC is collateral
+                signature_type=0,  # EOA signature
+            )
+
+            result = self.client.update_balance_allowance(params)
+            logger.info(f"Allowance set successfully: {result}")
+            return True
+        except Exception as e:
+            logger.error(f"Set allowance failed: {e}")
+            return False
