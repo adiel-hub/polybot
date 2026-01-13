@@ -130,16 +130,18 @@ async def handle_2fa_verify(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     """
     Handle 6-digit code verification.
 
+    This handles TWO scenarios:
+    1. Initial 2FA setup verification
+    2. Verification for protected actions (withdraw, export_key)
+
     Flow:
     1. Get code from message
     2. Verify via UserService.verify_2fa_token()
     3. If valid:
-       - Enable 2FA in settings
-       - Mark as verified
-       - Show success message
+       - For setup: Enable 2FA in settings and show success
+       - For protected action: Mark as verified and route to original action
     4. If invalid:
-       - Show error
-       - Allow retry (3 attempts max)
+       - Show error and allow retry (3 attempts max)
     """
     user = update.effective_user
     user_service = context.bot_data["user_service"]
@@ -161,11 +163,12 @@ async def handle_2fa_verify(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if attempts >= 3:
         context.user_data.pop("2fa_setup_secret", None)
         context.user_data.pop("2fa_verification_attempts", None)
+        context.user_data.pop("pending_2fa_action", None)
 
-        keyboard = [[InlineKeyboardButton("🔙 Back to Settings", callback_data="menu_settings")]]
+        keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="menu_main")]]
         await update.message.reply_text(
             "❌ *Too Many Failed Attempts*\n\n"
-            "Please start the 2FA setup process again from Settings.",
+            "Please try again later.",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown",
         )
@@ -175,25 +178,81 @@ async def handle_2fa_verify(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     is_valid = await user_service.verify_2fa_token(user.id, code)
 
     if is_valid:
-        # Enable 2FA in settings
-        await user_service.update_user_setting(user.id, "two_factor_enabled", True)
+        # Check if this is for a protected action or initial setup
+        pending_action = context.user_data.get("pending_2fa_action")
 
-        # Clear temporary data
-        context.user_data.pop("2fa_setup_secret", None)
-        context.user_data.pop("2fa_verification_attempts", None)
+        if pending_action:
+            # This is verification for a protected action (withdraw, export_key)
+            context.user_data["2fa_verified"] = True
+            context.user_data.pop("2fa_verification_attempts", None)
 
-        # Show success message
-        keyboard = [[InlineKeyboardButton("🔙 Back to Settings", callback_data="menu_settings")]]
-        await update.message.reply_text(
-            "✅ *2FA Enabled Successfully!*\n\n"
-            "Your account is now protected with Two-Factor Authentication.\n\n"
-            "You'll need your authenticator app for:\n"
-            "• Withdrawals\n"
-            "• Private key export",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
-        return ConversationState.MAIN_MENU
+            # Execute the pending action automatically
+            if pending_action == "withdraw":
+                # Import and call confirm_withdraw handler
+                from bot.handlers.wallet import confirm_withdraw
+
+                # Create a fake callback query since we're coming from a message
+                # We'll need to re-show the confirmation with a button
+                keyboard = [[
+                    InlineKeyboardButton("✅ Confirm Withdrawal", callback_data="withdraw_confirm"),
+                    InlineKeyboardButton("❌ Cancel", callback_data="menu_main"),
+                ]]
+
+                amount = context.user_data.get("withdraw_amount", 0)
+                to_address = context.user_data.get("withdraw_address", "")
+
+                await update.message.reply_text(
+                    "✅ *2FA Verified*\n\n"
+                    f"💵 Amount: `${amount:.2f}` USDC\n"
+                    f"📤 To: `{to_address[:10]}...{to_address[-6:]}`\n\n"
+                    "Click Confirm to complete withdrawal:",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="Markdown",
+                )
+                return ConversationState.CONFIRM_WITHDRAW
+
+            elif pending_action == "export_key":
+                # Import and call export handler
+                from bot.handlers.settings import handle_settings_callback
+
+                # Re-show the confirmation button
+                keyboard = [[
+                    InlineKeyboardButton("⚠️ Yes, Show Private Key", callback_data="settings_export_confirm"),
+                    InlineKeyboardButton("❌ Cancel", callback_data="menu_settings"),
+                ]]
+
+                await update.message.reply_text(
+                    "✅ *2FA Verified*\n\n"
+                    "Click below to view your private key:",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="Markdown",
+                )
+                return ConversationState.SETTINGS_EXPORT_KEY
+
+            else:
+                return ConversationState.MAIN_MENU
+
+        else:
+            # This is initial 2FA setup verification
+            # Enable 2FA in settings
+            await user_service.update_user_setting(user.id, "two_factor_enabled", True)
+
+            # Clear temporary data
+            context.user_data.pop("2fa_setup_secret", None)
+            context.user_data.pop("2fa_verification_attempts", None)
+
+            # Show success message
+            keyboard = [[InlineKeyboardButton("🔙 Back to Settings", callback_data="menu_settings")]]
+            await update.message.reply_text(
+                "✅ *2FA Enabled Successfully!*\n\n"
+                "Your account is now protected with Two-Factor Authentication.\n\n"
+                "You'll need your authenticator app for:\n"
+                "• Withdrawals\n"
+                "• Private key export",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown",
+            )
+            return ConversationState.MAIN_MENU
 
     else:
         # Invalid code - increment attempts
