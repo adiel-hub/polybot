@@ -74,9 +74,10 @@ class TradingService:
 
                 if client.api_credentials:
                     creds = client.api_credentials
-                    enc_key, _ = self.encryption.encrypt(creds["api_key"])
-                    enc_secret, _ = self.encryption.encrypt(creds["api_secret"])
-                    enc_pass, _ = self.encryption.encrypt(creds["api_passphrase"])
+                    # Use wallet's existing salt for API credentials
+                    enc_key = self.encryption.encrypt_with_salt(creds["api_key"], wallet.encryption_salt)
+                    enc_secret = self.encryption.encrypt_with_salt(creds["api_secret"], wallet.encryption_salt)
+                    enc_pass = self.encryption.encrypt_with_salt(creds["api_passphrase"], wallet.encryption_salt)
 
                     await self.wallet_repo.update_api_credentials(
                         wallet.id,
@@ -90,9 +91,10 @@ class TradingService:
 
             if client.api_credentials:
                 creds = client.api_credentials
-                enc_key, _ = self.encryption.encrypt(creds["api_key"])
-                enc_secret, _ = self.encryption.encrypt(creds["api_secret"])
-                enc_pass, _ = self.encryption.encrypt(creds["api_passphrase"])
+                # Use wallet's existing salt for API credentials
+                enc_key = self.encryption.encrypt_with_salt(creds["api_key"], wallet.encryption_salt)
+                enc_secret = self.encryption.encrypt_with_salt(creds["api_secret"], wallet.encryption_salt)
+                enc_pass = self.encryption.encrypt_with_salt(creds["api_passphrase"], wallet.encryption_salt)
 
                 await self.wallet_repo.update_api_credentials(
                     wallet.id,

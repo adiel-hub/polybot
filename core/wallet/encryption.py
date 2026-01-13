@@ -85,6 +85,20 @@ class KeyEncryption:
 
         return Fernet(key)
 
+    def encrypt_with_salt(self, data: str, salt: bytes) -> bytes:
+        """
+        Encrypt data using a specific salt (for reusing wallet's salt).
+
+        Args:
+            data: String to encrypt
+            salt: The salt to use for encryption
+
+        Returns:
+            Encrypted data (without returning salt, since it's provided)
+        """
+        fernet = self._derive_fernet(salt)
+        return fernet.encrypt(data.encode())
+
     def encrypt_string(self, data: str) -> Tuple[bytes, bytes]:
         """
         Encrypt any string (for API keys, etc).
