@@ -247,7 +247,7 @@ class TradingService:
                 return {"success": False, "error": result.error}
 
         except Exception as e:
-            logger.error(f"Order placement failed: {e}")
+            logger.error(f"Order placement failed: {e}", exc_info=True)
             await self.order_repo.update_status(
                 db_order.id,
                 "FAILED",
