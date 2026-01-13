@@ -101,6 +101,56 @@ class UserRepository:
         )
         await conn.commit()
 
+    async def update_totp_secret(
+        self,
+        user_id: int,
+        encrypted_secret: bytes,
+        salt: bytes,
+    ) -> None:
+        """Store encrypted TOTP secret."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            """
+            UPDATE users
+            SET totp_secret = ?,
+                totp_secret_salt = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (encrypted_secret, salt, datetime.utcnow(), user_id),
+        )
+        await conn.commit()
+
+    async def mark_totp_verified(self, user_id: int) -> None:
+        """Mark TOTP as verified (successful setup)."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            """
+            UPDATE users
+            SET totp_verified_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (datetime.utcnow(), datetime.utcnow(), user_id),
+        )
+        await conn.commit()
+
+    async def clear_totp_secret(self, user_id: int) -> None:
+        """Clear TOTP secret (disable 2FA)."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            """
+            UPDATE users
+            SET totp_secret = NULL,
+                totp_secret_salt = NULL,
+                totp_verified_at = NULL,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (datetime.utcnow(), user_id),
+        )
+        await conn.commit()
+
     async def get_all_active(self) -> List[User]:
         """Get all active users."""
         conn = await self.db.get_connection()

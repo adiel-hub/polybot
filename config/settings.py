@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     trade_rate_limit: int = Field(default=5, description="Max trades per minute")
     browse_rate_limit: int = Field(default=30, description="Max market views per minute")
 
+    # Admin
+    admin_telegram_ids: str = Field(default="", description="Comma-separated list of admin Telegram IDs")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

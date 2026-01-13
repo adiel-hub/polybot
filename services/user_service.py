@@ -249,3 +249,101 @@ class UserService:
         """
         settings = await self.get_user_settings(telegram_id)
         return settings.get(key, default)
+
+    # Two-Factor Authentication Methods
+
+    async def setup_2fa(self, telegram_id: int) -> tuple[str, Any]:
+        """
+        Generate and store TOTP secret, return QR code.
+
+        Args:
+            telegram_id: Telegram user ID
+
+        Returns:
+            Tuple of (secret_for_display, qr_code_image)
+        """
+        from core.security.two_factor import TwoFactorAuth
+
+        user = await self.get_user(telegram_id)
+        if not user:
+            raise ValueError("User not found")
+
+        # Generate 2FA secret and QR code
+        username = user.telegram_username or f"user_{telegram_id}"
+        secret, provisioning_uri, qr_code = TwoFactorAuth.setup_2fa(username)
+
+        # Encrypt and store the secret
+        encrypted_secret, salt = self.encryption.encrypt(secret)
+        await self.user_repo.update_totp_secret(user.id, encrypted_secret, salt)
+
+        return secret, qr_code
+
+    async def verify_2fa_token(self, telegram_id: int, token: str) -> bool:
+        """
+        Verify TOTP token for a user.
+
+        Args:
+            telegram_id: Telegram user ID
+            token: 6-digit TOTP code
+
+        Returns:
+            True if token is valid
+        """
+        from core.security.two_factor import TwoFactorAuth
+
+        user = await self.get_user(telegram_id)
+        if not user or not user.totp_secret or not user.totp_secret_salt:
+            return False
+
+        # Decrypt the secret
+        secret = self.encryption.decrypt(user.totp_secret, user.totp_secret_salt)
+
+        # Verify the token
+        is_valid = TwoFactorAuth.verify_token(secret, token)
+
+        # Mark as verified on first successful verification
+        if is_valid and not user.totp_verified_at:
+            await self.user_repo.mark_totp_verified(user.id)
+
+        return is_valid
+
+    async def is_2fa_enabled(self, telegram_id: int) -> bool:
+        """
+        Check if user has 2FA enabled and verified.
+
+        Args:
+            telegram_id: Telegram user ID
+
+        Returns:
+            True if 2FA is enabled and verified
+        """
+        user = await self.get_user(telegram_id)
+        if not user:
+            return False
+
+        # Check both settings flag and that secret exists and was verified
+        settings = await self.get_user_settings(telegram_id)
+        has_2fa_enabled = settings.get("two_factor_enabled", False)
+
+        return (
+            has_2fa_enabled
+            and user.totp_secret is not None
+            and user.totp_verified_at is not None
+        )
+
+    async def disable_2fa(self, telegram_id: int) -> None:
+        """
+        Disable 2FA for user.
+
+        Args:
+            telegram_id: Telegram user ID
+        """
+        user = await self.get_user(telegram_id)
+        if not user:
+            return
+
+        # Clear TOTP secret from database
+        await self.user_repo.clear_totp_secret(user.id)
+
+        # Update settings
+        await self.update_user_setting(telegram_id, "two_factor_enabled", False)
