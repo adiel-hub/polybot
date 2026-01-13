@@ -314,10 +314,18 @@ async def confirm_withdraw(
             )
         else:
             # Escape error message to prevent Markdown parsing issues
-            error_msg = error_str.replace('*', '\\*').replace('_', '\\_').replace('[', '\\[').replace('`', '\\`')
+            error_msg = (error_str
+                .replace('*', '\\*')
+                .replace('_', '\\_')
+                .replace('[', '\\[')
+                .replace(']', '\\]')
+                .replace('`', '\\`')
+                .replace('{', '\\{')
+                .replace('}', '\\}'))
             user_message = f"❌ Withdrawal failed:\n{error_msg}\n\n🔄 Please try again."
 
-        await query.edit_message_text(user_message)
+        # Don't use parse_mode to avoid any parsing issues
+        await query.edit_message_text(user_message, parse_mode=None)
 
     # Clear withdrawal data and 2FA verification
     for key in ["withdraw_amount", "withdraw_address", "withdraw_balance", "2fa_verified", "pending_2fa_action"]:
