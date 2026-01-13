@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import ConfigDict, Field
 from pathlib import Path
 
 
@@ -46,10 +46,17 @@ class Settings(BaseSettings):
     # Admin
     admin_telegram_ids: str = Field(default="", description="Comma-separated list of admin Telegram IDs")
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    # Polymarket Builder Program
+    poly_builder_api_key: str = Field(default="", description="Polymarket Builder API key")
+    poly_builder_secret: str = Field(default="", description="Polymarket Builder secret")
+    poly_builder_passphrase: str = Field(default="", description="Polymarket Builder passphrase")
+
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",  # Allow extra fields in .env
+    )
 
     @property
     def db_path(self) -> Path:
