@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import ApiCreds, MarketOrderArgs, OrderArgs, OrderType
 from py_clob_client.order_builder.constants import BUY, SELL
+from py_builder_signing_sdk.config import BuilderConfig
+from py_builder_signing_sdk.sdk_types import BuilderApiKeyCreds
 
 from config import settings
 
@@ -40,6 +42,17 @@ class PolymarketCLOB:
         self.private_key = private_key
         self.funder_address = funder_address
 
+        # Configure builder attribution if credentials are provided
+        builder_config = None
+        if settings.poly_builder_api_key:
+            logger.info("Builder credentials found - enabling order attribution")
+            builder_creds = BuilderApiKeyCreds(
+                key=settings.poly_builder_api_key,
+                secret=settings.poly_builder_secret,
+                passphrase=settings.poly_builder_passphrase,
+            )
+            builder_config = BuilderConfig(local_builder_creds=builder_creds)
+
         # Initialize client
         self.client = ClobClient(
             host=settings.clob_host,
@@ -47,6 +60,7 @@ class PolymarketCLOB:
             chain_id=settings.chain_id,
             signature_type=0,  # EOA signature
             funder=funder_address,
+            builder_config=builder_config,
         )
 
         self._api_creds: Optional[ApiCreds] = None
@@ -318,3 +332,21 @@ class PolymarketCLOB:
         except Exception as e:
             logger.error(f"Get best price failed: {e}")
             return None
+
+    async def get_builder_trades(self) -> List[Dict[str, Any]]:
+        """
+        Get trades attributed to this builder account.
+
+        Returns:
+            List of trades credited to your builder
+        """
+        try:
+            if not settings.poly_builder_api_key:
+                logger.warning("Builder credentials not configured - cannot fetch builder trades")
+                return []
+
+            trades = self.client.get_builder_trades()
+            return trades if trades else []
+        except Exception as e:
+            logger.error(f"Get builder trades failed: {e}")
+            return []

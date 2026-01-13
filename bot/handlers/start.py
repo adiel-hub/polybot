@@ -63,15 +63,12 @@ async def license_accept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     try:
         # Register user and generate wallet
-        wallet_address = await user_service.register_user(
+        new_user, wallet = await user_service.register_user(
             telegram_id=user.id,
             telegram_username=user.username,
             first_name=user.first_name,
             last_name=user.last_name,
         )
-
-        # Get the newly created user
-        new_user = await user_service.get_user(user.id)
 
         # Generate referral code for the new user
         await user_service.generate_referral_code_for_user(new_user.id)
@@ -86,7 +83,7 @@ async def license_accept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.edit_message_text(
             f"✅ *Your PolyBot wallet is ready!*\n\n"
             f"🔑 Your wallet address:\n"
-            f"`{wallet_address}`\n\n"
+            f"`{wallet.address}`\n\n"
             f"🚀 *Get started:*\n"
             f"💳 Fund your wallet\n"
             f"👥 Copy trade your favorite traders\n"

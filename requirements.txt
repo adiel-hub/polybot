@@ -3,6 +3,7 @@ python-telegram-bot[job-queue]>=21.0
 
 # Polymarket
 py-clob-client
+py-builder-signing-sdk
 polymarket-apis>=0.1.0
 
 # WebSocket

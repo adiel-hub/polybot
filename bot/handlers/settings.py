@@ -240,9 +240,43 @@ async def handle_settings_callback(
 
     # Toggle 2FA
     elif callback_data == "settings_toggle_2fa":
+        from bot.handlers.two_factor import show_2fa_intro
+
         settings = await user_service.get_user_settings(user.id)
         current = settings.get("two_factor_enabled", False)
-        await user_service.update_user_setting(user.id, "two_factor_enabled", not current)
+
+        if current:
+            # Disable 2FA - show confirmation
+            keyboard = [[
+                InlineKeyboardButton("⚠️ Yes, Disable 2FA", callback_data="settings_2fa_disable_confirm"),
+                InlineKeyboardButton("❌ Cancel", callback_data="menu_settings"),
+            ]]
+            await query.edit_message_text(
+                "🔐 *Disable Two-Factor Authentication*\n\n"
+                "⚠️ This will remove extra protection from:\n"
+                "• Withdrawals\n"
+                "• Private key export\n\n"
+                "Are you sure?",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown",
+            )
+            return ConversationState.SETTINGS_MENU
+        else:
+            # Enable 2FA - show intro screen matching screenshot
+            return await show_2fa_intro(update, context)
+
+    # Confirm 2FA disable
+    elif callback_data == "settings_2fa_disable_confirm":
+        await user_service.disable_2fa(user.id)
+        await user_service.update_user_setting(user.id, "two_factor_enabled", False)
+
+        keyboard = [[InlineKeyboardButton("🔙 Back to Settings", callback_data="menu_settings")]]
+        await query.edit_message_text(
+            "✅ *2FA Disabled*\n\n"
+            "Two-Factor Authentication has been disabled for your account.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
         return await show_settings_menu(update, context)
 
     # Export private key
@@ -270,6 +304,19 @@ async def handle_settings_callback(
         return ConversationState.SETTINGS_EXPORT_KEY
 
     elif callback_data == "settings_export_confirm":
+        # Check if 2FA verification is required
+        if await user_service.is_2fa_enabled(user.id):
+            if not context.user_data.get("2fa_verified"):
+                # Require 2FA verification
+                await query.edit_message_text(
+                    "🔐 *2FA Verification Required*\n\n"
+                    "Enter your 6-digit 2FA code to export private key:",
+                    parse_mode="Markdown",
+                )
+                context.user_data["pending_2fa_action"] = "export_key"
+                context.user_data["2fa_verification_attempts"] = 0
+                return ConversationState.TWO_FA_VERIFY
+
         # Get user's wallet and decrypt private key
         user_db = await user_service.get_user(user.id)
         if not user_db:
@@ -282,6 +329,10 @@ async def handle_settings_callback(
             return ConversationState.SETTINGS_MENU
 
         private_key = await user_service.get_private_key(user_db.id)
+
+        # Clear 2FA verification flag after successful action
+        context.user_data.pop("2fa_verified", None)
+        context.user_data.pop("pending_2fa_action", None)
 
         keyboard = [
             [InlineKeyboardButton("🔙 Back to Settings", callback_data="menu_settings")],

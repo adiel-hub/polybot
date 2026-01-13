@@ -37,7 +37,7 @@ class UserService:
         telegram_username: Optional[str] = None,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
-    ) -> str:
+    ) -> tuple[User, Wallet]:
         """
         Register a new user and generate wallet.
 
@@ -48,7 +48,7 @@ class UserService:
             last_name: User's last name
 
         Returns:
-            Generated wallet address
+            Tuple of (User, Wallet) objects
         """
         # Create user
         user = await self.user_repo.create(
@@ -65,7 +65,7 @@ class UserService:
         encrypted_key, salt = self.encryption.encrypt(private_key)
 
         # Store wallet
-        await self.wallet_repo.create(
+        wallet = await self.wallet_repo.create(
             user_id=user.id,
             address=address,
             encrypted_private_key=encrypted_key,
@@ -77,7 +77,7 @@ class UserService:
 
         logger.info(f"Registered user {telegram_id} with wallet {address[:10]}...")
 
-        return address
+        return user, wallet
 
     async def generate_referral_code_for_user(self, user_id: int) -> str:
         """

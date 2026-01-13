@@ -243,6 +243,19 @@ async def confirm_withdraw(
     amount = context.user_data.get("withdraw_amount", 0)
     to_address = context.user_data.get("withdraw_address", "")
 
+    # Check if 2FA verification is required
+    if await user_service.is_2fa_enabled(user.id):
+        if not context.user_data.get("2fa_verified"):
+            # Require 2FA verification
+            await query.edit_message_text(
+                "🔐 *2FA Verification Required*\n\n"
+                "Enter your 6-digit 2FA code to confirm withdrawal:",
+                parse_mode="Markdown",
+            )
+            context.user_data["pending_2fa_action"] = "withdraw"
+            context.user_data["2fa_verification_attempts"] = 0
+            return ConversationState.TWO_FA_VERIFY
+
     await query.edit_message_text("⏳ Processing withdrawal...")
 
     try:
@@ -295,8 +308,8 @@ async def confirm_withdraw(
             f"❌ Withdrawal failed: {str(e)}\n\n🔄 Please try again."
         )
 
-    # Clear withdrawal data
-    for key in ["withdraw_amount", "withdraw_address", "withdraw_balance"]:
+    # Clear withdrawal data and 2FA verification
+    for key in ["withdraw_amount", "withdraw_address", "withdraw_balance", "2fa_verified", "pending_2fa_action"]:
         context.user_data.pop(key, None)
 
     from bot.handlers.menu import show_main_menu

@@ -62,6 +62,12 @@ from bot.handlers.settings import (
     handle_settings_callback,
     handle_settings_input,
 )
+from bot.handlers.two_factor import (
+    show_2fa_intro,
+    handle_2fa_continue,
+    handle_2fa_verify,
+    verify_2fa_for_action,
+)
 from bot.handlers.referral import (
     show_referral_menu,
     handle_claim_earnings,
@@ -254,6 +260,16 @@ async def create_application(db: Database) -> Application:
             ],
             ConversationState.SETTINGS_EXPORT_KEY: [
                 CallbackQueryHandler(handle_settings_callback, pattern="^settings_"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+
+            # Two-Factor Authentication
+            ConversationState.TWO_FA_SETUP: [
+                CallbackQueryHandler(handle_2fa_continue, pattern="^2fa_continue$"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+            ConversationState.TWO_FA_VERIFY: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_2fa_verify),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],
 
