@@ -74,17 +74,54 @@ async def handle_wallet_callback(
     user_service = context.bot_data["user_service"]
 
     if callback_data == "wallet_qr":
-        # Generate QR code (placeholder)
+        # Generate QR code for wallet address
         wallet = await user_service.get_wallet(user.id)
         if wallet:
-            await query.edit_message_text(
-                f"📱 *QR Code*\n\n"
-                f"📷 Scan to deposit USDC:\n\n"
-                f"`{wallet.address}`\n\n"
-                f"🔜 _QR code image coming soon_",
-                reply_markup=get_back_keyboard("menu_wallet"),
-                parse_mode="Markdown",
-            )
+            try:
+                import qrcode
+                from io import BytesIO
+
+                # Generate QR code
+                qr = qrcode.QRCode(
+                    version=1,
+                    error_correction=qrcode.constants.ERROR_CORRECT_L,
+                    box_size=10,
+                    border=4,
+                )
+                qr.add_data(wallet.address)
+                qr.make(fit=True)
+
+                # Create image
+                img = qr.make_image(fill_color="black", back_color="white")
+
+                # Convert to bytes
+                bio = BytesIO()
+                img.save(bio, 'PNG')
+                bio.seek(0)
+
+                # Send QR code image
+                await query.message.reply_photo(
+                    photo=bio,
+                    caption=(
+                        f"📱 *Deposit QR Code*\n\n"
+                        f"🔑 Address:\n`{wallet.address}`\n\n"
+                        f"⚠️ Send USDC on Polygon network only"
+                    ),
+                    parse_mode="Markdown",
+                )
+
+                await query.answer("QR code generated!")
+
+            except Exception as e:
+                logger.error(f"QR code generation failed: {e}")
+                await query.edit_message_text(
+                    f"📱 *Deposit Address*\n\n"
+                    f"🔑 Your Wallet Address:\n`{wallet.address}`\n\n"
+                    f"⚠️ QR code generation failed. Please copy the address manually.",
+                    reply_markup=get_back_keyboard("menu_wallet"),
+                    parse_mode="Markdown",
+                )
+
         return ConversationState.WALLET_MENU
 
     elif callback_data == "wallet_withdraw":

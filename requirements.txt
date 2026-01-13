@@ -25,3 +25,6 @@ cryptography
 python-dotenv
 pydantic
 pydantic-settings
+
+# QR Code Generation
+qrcode[pil]

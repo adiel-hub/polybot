@@ -128,6 +128,15 @@ class CopyTraderRepository:
         )
         await conn.commit()
 
+    async def activate(self, copy_trader_id: int) -> None:
+        """Reactivate a copy trader subscription."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            "UPDATE copy_traders SET is_active = 1 WHERE id = ?",
+            (copy_trader_id,),
+        )
+        await conn.commit()
+
     async def record_trade(
         self,
         copy_trader_id: int,

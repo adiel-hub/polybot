@@ -534,9 +534,10 @@ async def handle_copy_callback(
         if sub:
             if sub.is_active:
                 await copy_repo.deactivate(sub_id)
+                await query.answer("⏸️ Subscription paused")
             else:
-                # Reactivate would need a method
-                pass
+                await copy_repo.activate(sub_id)
+                await query.answer("▶️ Subscription reactivated")
 
         return await show_subscriptions(update, context)
 
