@@ -21,26 +21,26 @@ class BroadcastService:
         self, filter_type: str = "all"
     ) -> list[dict[str, Any]]:
         """Get users matching filter criteria."""
-        async with self.db.connection() as conn:
-            if filter_type == "active":
-                cursor = await conn.execute(
-                    "SELECT u.id, u.telegram_id FROM users u WHERE u.is_active = 1"
-                )
-            elif filter_type == "with_balance":
-                cursor = await conn.execute(
-                    """
-                    SELECT u.id, u.telegram_id FROM users u
-                    JOIN wallets w ON w.user_id = u.id
-                    WHERE u.is_active = 1 AND w.usdc_balance > 0
-                    """
-                )
-            else:  # all
-                cursor = await conn.execute(
-                    "SELECT id, telegram_id FROM users"
-                )
+        conn = await self.db.get_connection()
+        if filter_type == "active":
+            cursor = await conn.execute(
+                "SELECT u.id, u.telegram_id FROM users u WHERE u.is_active = 1"
+            )
+        elif filter_type == "with_balance":
+            cursor = await conn.execute(
+                """
+                SELECT u.id, u.telegram_id FROM users u
+                JOIN wallets w ON w.user_id = u.id
+                WHERE u.is_active = 1 AND w.usdc_balance > 0
+                """
+            )
+        else:  # all
+            cursor = await conn.execute(
+                "SELECT id, telegram_id FROM users"
+            )
 
-            rows = await cursor.fetchall()
-            return [{"id": row[0], "telegram_id": row[1]} for row in rows]
+        rows = await cursor.fetchall()
+        return [{"id": row[0], "telegram_id": row[1]} for row in rows]
 
     async def broadcast_message(
         self,
@@ -77,6 +77,7 @@ class BroadcastService:
                         chat_id=user["telegram_id"],
                         photo=image_file_id,
                         caption=message,
+                        parse_mode="Markdown",
                         reply_markup=reply_markup,
                     )
                 else:
@@ -114,20 +115,20 @@ class BroadcastService:
 
     async def count_target_users(self, filter_type: str = "all") -> int:
         """Count users matching filter criteria."""
-        async with self.db.connection() as conn:
-            if filter_type == "active":
-                cursor = await conn.execute(
-                    "SELECT COUNT(*) FROM users WHERE is_active = 1"
-                )
-            elif filter_type == "with_balance":
-                cursor = await conn.execute(
-                    """
-                    SELECT COUNT(*) FROM users u
-                    JOIN wallets w ON w.user_id = u.id
-                    WHERE u.is_active = 1 AND w.usdc_balance > 0
-                    """
-                )
-            else:  # all
-                cursor = await conn.execute("SELECT COUNT(*) FROM users")
+        conn = await self.db.get_connection()
+        if filter_type == "active":
+            cursor = await conn.execute(
+                "SELECT COUNT(*) FROM users WHERE is_active = 1"
+            )
+        elif filter_type == "with_balance":
+            cursor = await conn.execute(
+                """
+                SELECT COUNT(*) FROM users u
+                JOIN wallets w ON w.user_id = u.id
+                WHERE u.is_active = 1 AND w.usdc_balance > 0
+                """
+            )
+        else:  # all
+            cursor = await conn.execute("SELECT COUNT(*) FROM users")
 
-            return (await cursor.fetchone())[0]
+        return (await cursor.fetchone())[0]

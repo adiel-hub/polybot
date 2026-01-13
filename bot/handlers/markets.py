@@ -20,8 +20,7 @@ async def show_browse_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     text = (
         "🔍 *Market Search*\n\n"
-        '✏️ Type any keyword to search (e.g. "bitcoin", "trump")\n'
-        '🔗 Or paste a Polymarket URL (e.g. polymarket.com/event/...)\n\n'
+        '✏️ Type any keyword to search (e.g. "bitcoin", "trump")\n\n'
         "📂 Or browse by:"
     )
 
