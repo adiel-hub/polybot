@@ -314,17 +314,50 @@ class GammaMarketClient:
         """
         Get trader statistics for copy trading.
 
-        Note: This may require additional API endpoints or CLOB data.
+        Fetches trader data from Polymarket's public API endpoints.
 
         Args:
             address: Trader wallet address
 
         Returns:
-            Trader stats or None
+            Trader stats including volume, trades, PnL, win rate
         """
         try:
-            # This would typically come from CLOB API trade history
-            # For now, return placeholder
+            client = await self._get_client()
+
+            # Fetch trader profile data from Polymarket API
+            # Using the profiles endpoint which provides trader statistics
+            profile_url = f"https://polymarket.com/api/profile/{address.lower()}"
+            response = await client.get(profile_url)
+
+            if response.status_code == 200:
+                data = response.json()
+
+                # Extract stats from profile response
+                positions_value = float(data.get("positionsValue", 0) or 0)
+                profit_loss = float(data.get("profitLoss", 0) or 0)
+
+                return {
+                    "address": address,
+                    "total_volume": positions_value,
+                    "total_trades": int(data.get("tradesCount", 0) or 0),
+                    "pnl": profit_loss,
+                    "win_rate": self._calculate_win_rate(data),
+                    "positions_value": positions_value,
+                    "profit_loss_percent": float(data.get("profitLossPercent", 0) or 0),
+                    "username": data.get("username", ""),
+                    "profile_image": data.get("profileImage", ""),
+                }
+
+            # Fallback: Try the CLOB API activity endpoint
+            clob_url = f"https://clob.polymarket.com/activity?user={address.lower()}&limit=100"
+            clob_response = await client.get(clob_url)
+
+            if clob_response.status_code == 200:
+                activities = clob_response.json()
+                return self._calculate_stats_from_activity(address, activities)
+
+            # Return basic stats if no data available
             return {
                 "address": address,
                 "total_volume": 0,
@@ -332,6 +365,171 @@ class GammaMarketClient:
                 "pnl": 0,
                 "win_rate": 0,
             }
+
         except Exception as e:
-            logger.error(f"Failed to fetch trader stats: {e}")
+            logger.error(f"Failed to fetch trader stats for {address}: {e}")
+            return None
+
+    def _calculate_win_rate(self, profile_data: Dict[str, Any]) -> float:
+        """Calculate win rate from profile data."""
+        try:
+            winning_trades = int(profile_data.get("winningTrades", 0) or 0)
+            total_trades = int(profile_data.get("tradesCount", 0) or 0)
+
+            if total_trades == 0:
+                return 0.0
+
+            return round((winning_trades / total_trades) * 100, 1)
+        except (ValueError, ZeroDivisionError):
+            return 0.0
+
+    def _calculate_stats_from_activity(
+        self,
+        address: str,
+        activities: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Calculate trader stats from activity history."""
+        if not activities:
+            return {
+                "address": address,
+                "total_volume": 0,
+                "total_trades": 0,
+                "pnl": 0,
+                "win_rate": 0,
+            }
+
+        total_volume = 0.0
+        total_trades = len(activities)
+        profitable_trades = 0
+        total_pnl = 0.0
+
+        for activity in activities:
+            # Calculate volume from trade size and price
+            size = float(activity.get("size", 0) or 0)
+            price = float(activity.get("price", 0) or 0)
+            trade_value = size * price
+            total_volume += trade_value
+
+            # Track PnL if available
+            pnl = float(activity.get("pnl", 0) or 0)
+            total_pnl += pnl
+            if pnl > 0:
+                profitable_trades += 1
+
+        win_rate = (profitable_trades / total_trades * 100) if total_trades > 0 else 0
+
+        return {
+            "address": address,
+            "total_volume": round(total_volume, 2),
+            "total_trades": total_trades,
+            "pnl": round(total_pnl, 2),
+            "win_rate": round(win_rate, 1),
+        }
+
+    async def get_top_traders(
+        self,
+        limit: int = 25,
+        offset: int = 0,
+        category: str = "OVERALL",
+        time_period: str = "WEEK",
+        order_by: str = "PNL",
+    ) -> List[Dict[str, Any]]:
+        """
+        Get top traders by performance from Polymarket leaderboard.
+
+        Uses official Polymarket Data API: https://data-api.polymarket.com/v1/leaderboard
+
+        Args:
+            limit: Maximum number of traders (1-50)
+            offset: Pagination offset (0-1000)
+            category: OVERALL, POLITICS, SPORTS, CRYPTO, CULTURE, MENTIONS, WEATHER, ECONOMICS, TECH, FINANCE
+            time_period: DAY, WEEK, MONTH, ALL
+            order_by: PNL or VOL
+
+        Returns:
+            List of trader stats sorted by performance
+        """
+        try:
+            client = await self._get_client()
+
+            # Official Polymarket leaderboard API
+            leaderboard_url = "https://data-api.polymarket.com/v1/leaderboard"
+            response = await client.get(
+                leaderboard_url,
+                params={
+                    "category": category,
+                    "timePeriod": time_period,
+                    "orderBy": order_by,
+                    "limit": min(limit, 50),  # API max is 50
+                    "offset": min(offset, 1000),  # API max is 1000
+                },
+            )
+
+            if response.status_code != 200:
+                logger.warning(f"Leaderboard API returned {response.status_code}")
+                return []
+
+            data = response.json()
+            traders = []
+
+            # API returns array of trader objects directly
+            for entry in data if isinstance(data, list) else []:
+                trader = {
+                    "address": entry.get("proxyWallet", ""),
+                    "name": entry.get("userName", "Anonymous"),
+                    "pnl": float(entry.get("pnl", 0) or 0),
+                    "volume": float(entry.get("vol", 0) or 0),
+                    "rank": int(entry.get("rank", 0) or 0),
+                    "profile_image": entry.get("profileImage", ""),
+                    "x_username": entry.get("xUsername", ""),
+                    "verified": entry.get("verifiedBadge", False),
+                }
+                traders.append(trader)
+
+            return traders
+
+        except Exception as e:
+            logger.error(f"Failed to fetch top traders: {e}")
+            return []
+
+    async def get_trader_profile(self, address: str) -> Optional[Dict[str, Any]]:
+        """
+        Get specific trader's leaderboard stats.
+
+        Args:
+            address: Trader wallet address (0x-prefixed)
+
+        Returns:
+            Trader stats or None if not found
+        """
+        try:
+            client = await self._get_client()
+
+            leaderboard_url = "https://data-api.polymarket.com/v1/leaderboard"
+            response = await client.get(
+                leaderboard_url,
+                params={"user": address.lower()},
+            )
+
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+            if data and isinstance(data, list) and len(data) > 0:
+                entry = data[0]
+                return {
+                    "address": entry.get("proxyWallet", address),
+                    "name": entry.get("userName", "Anonymous"),
+                    "pnl": float(entry.get("pnl", 0) or 0),
+                    "volume": float(entry.get("vol", 0) or 0),
+                    "rank": int(entry.get("rank", 0) or 0),
+                    "profile_image": entry.get("profileImage", ""),
+                    "x_username": entry.get("xUsername", ""),
+                    "verified": entry.get("verifiedBadge", False),
+                }
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to fetch trader profile for {address}: {e}")
             return None

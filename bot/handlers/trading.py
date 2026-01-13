@@ -242,3 +242,256 @@ async def confirm_order(
         context.user_data.pop(key, None)
 
     return await show_main_menu(update, context, send_new=True)
+
+
+async def handle_sell_position(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Handle sell position callback from portfolio."""
+    query = update.callback_query
+    await query.answer()
+
+    callback_data = query.data
+    position_id = int(callback_data.replace("sell_position_", ""))
+
+    user = update.effective_user
+    user_service = context.bot_data["user_service"]
+    trading_service = context.bot_data["trading_service"]
+
+    db_user = await user_service.get_user(user.id)
+    if not db_user:
+        await query.edit_message_text("❌ User not found.")
+        return ConversationState.MAIN_MENU
+
+    # Get position from database
+    from database.repositories import PositionRepository
+    position_repo = PositionRepository(context.bot_data["db"])
+
+    position = await position_repo.get_by_id(position_id)
+
+    if not position or position.user_id != db_user.id:
+        await query.edit_message_text("❌ Position not found.")
+        return ConversationState.PORTFOLIO_VIEW
+
+    # Store position data for selling
+    context.user_data["sell_position"] = {
+        "id": position.id,
+        "token_id": position.token_id,
+        "size": position.size,
+        "outcome": position.outcome,
+        "market_question": position.market_question,
+        "market_condition_id": position.market_condition_id,
+        "average_entry_price": position.average_entry_price,
+        "current_price": position.current_price or position.average_entry_price,
+    }
+
+    current_value = position.size * (position.current_price or position.average_entry_price)
+    pnl = position.unrealized_pnl or 0
+    pnl_sign = "+" if pnl >= 0 else ""
+    pnl_emoji = "📈" if pnl >= 0 else "📉"
+
+    text = (
+        f"📉 *Sell Position*\n\n"
+        f"💹 Market: {position.market_question[:50] if position.market_question else 'Unknown'}...\n"
+        f"🎯 Outcome: {position.outcome}\n"
+        f"📊 Shares: `{position.size:.2f}`\n"
+        f"💰 Entry Price: `{position.average_entry_price * 100:.1f}c`\n"
+        f"💵 Current Value: `${current_value:.2f}`\n"
+        f"{pnl_emoji} P&L: `{pnl_sign}${pnl:.2f}`\n\n"
+        f"✏️ Enter the number of shares to sell:\n"
+        f"_(Enter `all` or `max` to sell entire position)_"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 Sell 25%", callback_data="sell_pct_25"),
+            InlineKeyboardButton("📊 Sell 50%", callback_data="sell_pct_50"),
+        ],
+        [
+            InlineKeyboardButton("📊 Sell 75%", callback_data="sell_pct_75"),
+            InlineKeyboardButton("📊 Sell 100%", callback_data="sell_pct_100"),
+        ],
+        [
+            InlineKeyboardButton("🔙 Back", callback_data="menu_portfolio"),
+            InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
+        ],
+    ]
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+    return ConversationState.SELL_AMOUNT
+
+
+async def handle_sell_percentage(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Handle sell percentage button callbacks."""
+    query = update.callback_query
+    await query.answer()
+
+    callback_data = query.data
+    percentage = int(callback_data.replace("sell_pct_", ""))
+
+    sell_position = context.user_data.get("sell_position")
+    if not sell_position:
+        await query.edit_message_text("❌ Position data not found.")
+        return ConversationState.PORTFOLIO_VIEW
+
+    shares_to_sell = sell_position["size"] * (percentage / 100)
+    context.user_data["sell_shares"] = shares_to_sell
+
+    return await show_sell_confirmation(update, context)
+
+
+async def handle_sell_amount_input(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Handle manual sell amount input."""
+    sell_position = context.user_data.get("sell_position")
+    if not sell_position:
+        await update.message.reply_text("❌ Position data not found.")
+        return ConversationState.PORTFOLIO_VIEW
+
+    text = update.message.text.strip().lower()
+
+    # Handle 'all' or 'max' keywords
+    if text in ["all", "max"]:
+        shares_to_sell = sell_position["size"]
+    else:
+        try:
+            shares_to_sell = float(text)
+            if shares_to_sell <= 0:
+                raise ValueError("Amount must be positive")
+            if shares_to_sell > sell_position["size"]:
+                await update.message.reply_text(
+                    f"❌ You only have `{sell_position['size']:.2f}` shares. "
+                    f"Please enter a smaller amount.",
+                    parse_mode="Markdown",
+                )
+                return ConversationState.SELL_AMOUNT
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Invalid amount. Please enter a number or 'all'."
+            )
+            return ConversationState.SELL_AMOUNT
+
+    context.user_data["sell_shares"] = shares_to_sell
+
+    return await show_sell_confirmation(update, context, is_message=True)
+
+
+async def show_sell_confirmation(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    is_message: bool = False,
+) -> int:
+    """Show sell order confirmation."""
+    sell_position = context.user_data.get("sell_position")
+    shares_to_sell = context.user_data.get("sell_shares", 0)
+
+    current_price = sell_position["current_price"]
+    estimated_value = shares_to_sell * current_price
+
+    text = (
+        f"📋 *Confirm Sell Order*\n\n"
+        f"💹 Market: {sell_position['market_question'][:50] if sell_position.get('market_question') else 'Unknown'}...\n"
+        f"🎯 Outcome: {sell_position['outcome']}\n"
+        f"📊 Shares to Sell: `{shares_to_sell:.2f}`\n"
+        f"💰 Est. Price: `{current_price * 100:.1f}c`\n"
+        f"💵 Est. Value: `${estimated_value:.2f}`\n\n"
+        f"✅ Confirm this sell order?"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Confirm Sell", callback_data="sell_confirm"),
+            InlineKeyboardButton("❌ Cancel", callback_data="menu_portfolio"),
+        ]
+    ]
+
+    if is_message:
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+    else:
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    return ConversationState.CONFIRM_SELL
+
+
+async def confirm_sell(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Execute the confirmed sell order."""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    trading_service = context.bot_data["trading_service"]
+    user_service = context.bot_data["user_service"]
+
+    db_user = await user_service.get_user(user.id)
+    if not db_user:
+        await query.edit_message_text("❌ User not found.")
+        return ConversationState.MAIN_MENU
+
+    sell_position = context.user_data.get("sell_position")
+    shares_to_sell = context.user_data.get("sell_shares", 0)
+
+    if not sell_position:
+        await query.edit_message_text("❌ Position data not found.")
+        return ConversationState.PORTFOLIO_VIEW
+
+    await query.edit_message_text("⏳ Submitting sell order...")
+
+    try:
+        result = await trading_service.sell_position(
+            user_id=db_user.id,
+            position_id=sell_position["id"],
+            token_id=sell_position["token_id"],
+            size=shares_to_sell,
+            market_condition_id=sell_position["market_condition_id"],
+        )
+
+        if result.get("success"):
+            await query.edit_message_text(
+                f"✅ *Sell Order Submitted!*\n\n"
+                f"🔗 Order ID: `{result.get('order_id', 'N/A')}`\n"
+                f"📊 Shares Sold: `{shares_to_sell:.2f}`\n"
+                f"💵 Est. Value: `${shares_to_sell * sell_position['current_price']:.2f}`\n\n"
+                f"🎉 Your sell order has been placed successfully.",
+                parse_mode="Markdown",
+            )
+        else:
+            await query.edit_message_text(
+                f"❌ *Sell Order Failed*\n\n"
+                f"⚠️ Error: {result.get('error', 'Unknown error')}\n\n"
+                f"🔄 Please try again.",
+                parse_mode="Markdown",
+            )
+
+    except Exception as e:
+        logger.error(f"Sell order failed: {e}")
+        await query.edit_message_text(
+            f"❌ Sell order failed: {str(e)}\n\n🔄 Please try again."
+        )
+
+    # Clear sell data from context
+    context.user_data.pop("sell_position", None)
+    context.user_data.pop("sell_shares", None)
+
+    return await show_main_menu(update, context, send_new=True)

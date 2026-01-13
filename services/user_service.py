@@ -79,6 +79,29 @@ class UserService:
 
         return address
 
+    async def generate_referral_code_for_user(self, user_id: int) -> str:
+        """
+        Generate and set a unique referral code for a user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Generated referral code
+        """
+        # Import here to avoid circular dependency
+        from services.referral_service import ReferralService
+
+        # Get database from user_repo
+        referral_service = ReferralService(self.user_repo.db)
+        code = await referral_service.generate_referral_code()
+
+        # Set the code
+        await self.user_repo.set_referral_code(user_id, code)
+
+        logger.info(f"Generated referral code {code} for user {user_id}")
+        return code
+
     async def get_wallet(self, telegram_id: int) -> Optional[Wallet]:
         """Get wallet for user."""
         user = await self.user_repo.get_by_telegram_id(telegram_id)

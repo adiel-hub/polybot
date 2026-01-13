@@ -39,6 +39,12 @@ class User:
     settings: dict
     created_at: datetime
     updated_at: datetime
+    # Referral fields
+    referral_code: Optional[str] = None
+    referrer_id: Optional[int] = None
+    commission_balance: float = 0.0
+    total_earned: float = 0.0
+    total_claimed: float = 0.0
 
     @classmethod
     def from_row(cls, row) -> "User":
@@ -56,6 +62,11 @@ class User:
             settings=settings,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            referral_code=row["referral_code"] if "referral_code" in row.keys() else None,
+            referrer_id=row["referrer_id"] if "referrer_id" in row.keys() else None,
+            commission_balance=float(row["commission_balance"]) if "commission_balance" in row.keys() and row["commission_balance"] else 0.0,
+            total_earned=float(row["total_earned"]) if "total_earned" in row.keys() and row["total_earned"] else 0.0,
+            total_claimed=float(row["total_claimed"]) if "total_claimed" in row.keys() and row["total_claimed"] else 0.0,
         )
 
     @property

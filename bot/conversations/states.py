@@ -54,3 +54,20 @@ class ConversationState(IntEnum):
 
     # Portfolio
     PORTFOLIO_VIEW = auto()
+
+    # Sell position flow
+    SELL_AMOUNT = auto()
+    CONFIRM_SELL = auto()
+
+    # Two-Factor Authentication
+    TWO_FA_SETUP = auto()
+    TWO_FA_VERIFY = auto()
+
+    # Group features
+    GROUP_SETUP = auto()
+    GROUP_SETTINGS = auto()
+
+    # Referral program
+    REFERRAL_MENU = auto()
+    REFERRAL_CLAIM = auto()
+    REFERRAL_QR = auto()

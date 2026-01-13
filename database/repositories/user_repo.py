@@ -118,3 +118,91 @@ class UserRepository:
         )
         row = await cursor.fetchone()
         return row["count"]
+
+    # Referral-related methods
+
+    async def get_by_referral_code(self, code: str) -> Optional[User]:
+        """Get user by referral code."""
+        conn = await self.db.get_connection()
+        cursor = await conn.execute(
+            "SELECT * FROM users WHERE referral_code = ?",
+            (code,),
+        )
+        row = await cursor.fetchone()
+        if row:
+            return User.from_row(row)
+        return None
+
+    async def set_referral_code(self, user_id: int, code: str) -> None:
+        """Set user's referral code."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            """
+            UPDATE users
+            SET referral_code = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (code, datetime.utcnow(), user_id),
+        )
+        await conn.commit()
+
+    async def set_referrer(self, user_id: int, referrer_id: int) -> None:
+        """Set user's referrer (who invited them)."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            """
+            UPDATE users
+            SET referrer_id = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (referrer_id, datetime.utcnow(), user_id),
+        )
+        await conn.commit()
+
+    async def add_commission_balance(self, user_id: int, amount: float) -> None:
+        """Add to user's commission balance and total earned."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            """
+            UPDATE users
+            SET commission_balance = commission_balance + ?,
+                total_earned = total_earned + ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (amount, amount, datetime.utcnow(), user_id),
+        )
+        await conn.commit()
+
+    async def claim_commission(self, user_id: int, amount: float) -> bool:
+        """
+        Claim commission from balance.
+
+        Deducts from commission_balance and adds to total_claimed.
+        Returns True if successful, False if insufficient balance.
+        """
+        conn = await self.db.get_connection()
+
+        # Check current balance
+        cursor = await conn.execute(
+            "SELECT commission_balance FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+        if not row or row["commission_balance"] < amount:
+            return False
+
+        await conn.execute(
+            """
+            UPDATE users
+            SET commission_balance = commission_balance - ?,
+                total_claimed = total_claimed + ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (amount, amount, datetime.utcnow(), user_id),
+        )
+        await conn.commit()
+        return True

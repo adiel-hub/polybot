@@ -16,6 +16,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     user = update.effective_user
     user_service = context.bot_data["user_service"]
 
+    # Extract referral code from /start ref_<code>
+    referral_code = None
+    if context.args and len(context.args) > 0:
+        arg = context.args[0]
+        if arg.startswith("ref_"):
+            referral_code = arg[4:]  # Remove "ref_" prefix
+            logger.info(f"User {user.id} started with referral code: {referral_code}")
+
+    # Store for use during registration
+    context.user_data["referral_code"] = referral_code
+
     # Check if user already registered
     if await user_service.is_registered(user.id):
         return await show_main_menu(update, context)
@@ -58,6 +69,18 @@ async def license_accept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             first_name=user.first_name,
             last_name=user.last_name,
         )
+
+        # Get the newly created user
+        new_user = await user_service.get_user(user.id)
+
+        # Generate referral code for the new user
+        await user_service.generate_referral_code_for_user(new_user.id)
+
+        # Link referral if code provided
+        referral_code = context.user_data.get("referral_code")
+        if referral_code:
+            referral_service = context.bot_data["referral_service"]
+            await referral_service.link_referral(new_user.id, referral_code)
 
         # Show success message
         await query.edit_message_text(

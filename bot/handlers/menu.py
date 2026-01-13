@@ -127,14 +127,8 @@ async def handle_menu_callback(
         return ConversationState.MAIN_MENU
 
     elif callback_data == "menu_rewards":
-        await query.edit_message_text(
-            "🎁 *Earn Rewards*\n\n"
-            "👫 Invite friends and earn referral rewards!\n\n"
-            "🔜 Referral system coming soon.",
-            parse_mode="Markdown",
-            reply_markup=get_main_menu_keyboard(),
-        )
-        return ConversationState.MAIN_MENU
+        from bot.handlers.referral import show_referral_menu
+        return await show_referral_menu(update, context)
 
     elif callback_data == "noop":
         # Do nothing for noop buttons

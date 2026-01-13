@@ -208,6 +208,25 @@ class Database:
             )
         """)
 
+        # Referral commissions table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS referral_commissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                referrer_id INTEGER NOT NULL,
+                referee_id INTEGER NOT NULL,
+                order_id INTEGER NOT NULL,
+                tier INTEGER NOT NULL CHECK(tier IN (1, 2, 3)),
+                trade_amount REAL NOT NULL,
+                trade_fee REAL NOT NULL,
+                commission_rate REAL NOT NULL,
+                commission_amount REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (referrer_id) REFERENCES users(id),
+                FOREIGN KEY (referee_id) REFERENCES users(id),
+                FOREIGN KEY (order_id) REFERENCES orders(id)
+            )
+        """)
+
         # Create indexes
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_wallets_address ON wallets(address)")
@@ -218,6 +237,28 @@ class Database:
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_stop_loss_active ON stop_loss_orders(is_active)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_deposits_tx_hash ON deposits(tx_hash)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_market_cache_active ON market_cache(is_active)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_referral_commissions_referrer ON referral_commissions(referrer_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_referral_commissions_referee ON referral_commissions(referee_id)")
+
+        # Add referral columns to users table if they don't exist
+        # SQLite doesn't support ADD COLUMN IF NOT EXISTS, so we check first
+        cursor = await conn.execute("PRAGMA table_info(users)")
+        columns = [row[1] for row in await cursor.fetchall()]
+
+        if "referral_code" not in columns:
+            await conn.execute("ALTER TABLE users ADD COLUMN referral_code TEXT UNIQUE")
+        if "referrer_id" not in columns:
+            await conn.execute("ALTER TABLE users ADD COLUMN referrer_id INTEGER REFERENCES users(id)")
+        if "commission_balance" not in columns:
+            await conn.execute("ALTER TABLE users ADD COLUMN commission_balance REAL DEFAULT 0.0")
+        if "total_earned" not in columns:
+            await conn.execute("ALTER TABLE users ADD COLUMN total_earned REAL DEFAULT 0.0")
+        if "total_claimed" not in columns:
+            await conn.execute("ALTER TABLE users ADD COLUMN total_claimed REAL DEFAULT 0.0")
+
+        # Create indexes for referral columns (safe to run even if they exist)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_referrer_id ON users(referrer_id)")
 
         await conn.commit()
         logger.info("Database tables initialized")

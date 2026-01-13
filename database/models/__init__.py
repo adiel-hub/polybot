@@ -6,6 +6,7 @@ from .stop_loss import StopLoss
 from .copy_trader import CopyTrader
 from .deposit import Deposit
 from .withdrawal import Withdrawal
+from .referral import ReferralCommission
 
 __all__ = [
     "User",
@@ -16,4 +17,5 @@ __all__ = [
     "CopyTrader",
     "Deposit",
     "Withdrawal",
+    "ReferralCommission",
 ]

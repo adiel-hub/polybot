@@ -30,6 +30,10 @@ class TradingService:
         self.wallet_repo = WalletRepository(db)
         self.encryption = encryption
 
+        # Import ReferralService here to avoid circular dependency
+        from services.referral_service import ReferralService
+        self.referral_service = ReferralService(db)
+
     async def _get_clob_client(self, user_id: int) -> Optional[PolymarketCLOB]:
         """Get CLOB client for user."""
         wallet = await self.wallet_repo.get_by_user_id(user_id)
@@ -193,6 +197,17 @@ class TradingService:
                             market_question=market_question,
                         )
 
+                    # Process referral commissions (instant on trade)
+                    try:
+                        await self.referral_service.process_trade_commission(
+                            user_id=user_id,
+                            order_id=db_order.id,
+                            trade_amount=amount,
+                        )
+                    except Exception as e:
+                        # Don't fail the order if commission processing fails
+                        logger.error(f"Failed to process referral commission: {e}")
+
                 return {
                     "success": True,
                     "order_id": result.order_id,
@@ -256,3 +271,114 @@ class TradingService:
     async def get_portfolio_value(self, user_id: int) -> float:
         """Get total portfolio value."""
         return await self.position_repo.get_total_value(user_id)
+
+    async def sell_position(
+        self,
+        user_id: int,
+        position_id: int,
+        token_id: str,
+        size: float,
+        market_condition_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Sell shares from a position.
+
+        Args:
+            user_id: User ID
+            position_id: Position ID
+            token_id: Token ID to sell
+            size: Number of shares to sell
+            market_condition_id: Market condition ID
+
+        Returns:
+            Dict with order_id, status, error
+        """
+        # Get position to verify ownership and size
+        position = await self.position_repo.get_by_id(position_id)
+        if not position or position.user_id != user_id:
+            return {"success": False, "error": "Position not found"}
+
+        if size > position.size:
+            return {"success": False, "error": "Insufficient shares"}
+
+        # Create sell order record
+        db_order = await self.order_repo.create(
+            user_id=user_id,
+            market_condition_id=market_condition_id,
+            token_id=token_id,
+            side="SELL",
+            order_type="MARKET",
+            size=size,
+            outcome=position.outcome,
+            market_question=position.market_question,
+        )
+
+        try:
+            # Get CLOB client
+            client = await self._get_clob_client(user_id)
+            if not client:
+                await self.order_repo.update_status(
+                    db_order.id,
+                    "FAILED",
+                    error_message="Failed to initialize trading client",
+                )
+                return {"success": False, "error": "Trading client error"}
+
+            # Place sell market order
+            result = await client.place_market_order(
+                token_id=token_id,
+                amount=size,
+                side="SELL",
+            )
+
+            if result.success:
+                # Update order with Polymarket ID
+                await self.order_repo.update_polymarket_id(
+                    db_order.id,
+                    result.order_id,
+                )
+                await self.order_repo.update_status(
+                    db_order.id,
+                    result.status or "OPEN",
+                )
+
+                # If filled, update position and add to balance
+                if result.status == "FILLED":
+                    # Get sell price
+                    sell_price = await client.get_best_price(token_id, "SELL")
+                    if sell_price:
+                        # Reduce position
+                        await self.position_repo.reduce_position(
+                            position_id,
+                            size,
+                            sell_price,
+                        )
+
+                        # Add proceeds to balance
+                        wallet = await self.wallet_repo.get_by_user_id(user_id)
+                        if wallet:
+                            proceeds = size * sell_price
+                            await self.wallet_repo.add_balance(wallet.id, proceeds)
+
+                return {
+                    "success": True,
+                    "order_id": result.order_id,
+                    "status": result.status,
+                    "db_order_id": db_order.id,
+                }
+            else:
+                await self.order_repo.update_status(
+                    db_order.id,
+                    "FAILED",
+                    error_message=result.error,
+                )
+                return {"success": False, "error": result.error}
+
+        except Exception as e:
+            logger.error(f"Sell order failed: {e}")
+            await self.order_repo.update_status(
+                db_order.id,
+                "FAILED",
+                error_message=str(e),
+            )
+            return {"success": False, "error": str(e)}

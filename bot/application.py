@@ -14,6 +14,7 @@ from config import settings
 from database.connection import Database
 from core.wallet import KeyEncryption
 from services import UserService, TradingService, MarketService
+from services.referral_service import ReferralService
 
 from bot.conversations.states import ConversationState
 from bot.handlers.start import start_command, license_accept, license_decline
@@ -29,6 +30,10 @@ from bot.handlers.trading import (
     handle_amount_input,
     handle_price_input,
     confirm_order,
+    handle_sell_position,
+    handle_sell_percentage,
+    handle_sell_amount_input,
+    confirm_sell,
 )
 from bot.handlers.wallet import (
     show_wallet,
@@ -57,6 +62,15 @@ from bot.handlers.settings import (
     handle_settings_callback,
     handle_settings_input,
 )
+from bot.handlers.referral import (
+    show_referral_menu,
+    handle_claim_earnings,
+    handle_create_qr,
+    handle_add_to_group,
+)
+
+# Admin panel
+from admin import create_admin_handler
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +83,7 @@ async def create_application(db: Database) -> Application:
     user_service = UserService(db, encryption)
     trading_service = TradingService(db, encryption)
     market_service = MarketService()
+    referral_service = ReferralService(db)
 
     # Initialize market categories
     await market_service.initialize_categories()
@@ -82,6 +97,7 @@ async def create_application(db: Database) -> Application:
     application.bot_data["user_service"] = user_service
     application.bot_data["trading_service"] = trading_service
     application.bot_data["market_service"] = market_service
+    application.bot_data["referral_service"] = referral_service
 
     # Main conversation handler
     conv_handler = ConversationHandler(
@@ -159,6 +175,19 @@ async def create_application(db: Database) -> Application:
             # Portfolio
             ConversationState.PORTFOLIO_VIEW: [
                 CallbackQueryHandler(handle_position_callback, pattern="^position_"),
+                CallbackQueryHandler(handle_sell_position, pattern="^sell_position_"),
+                CallbackQueryHandler(handle_stop_loss_callback, pattern="^stoploss_"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+
+            # Sell position flow
+            ConversationState.SELL_AMOUNT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_sell_amount_input),
+                CallbackQueryHandler(handle_sell_percentage, pattern="^sell_pct_"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+            ConversationState.CONFIRM_SELL: [
+                CallbackQueryHandler(confirm_sell, pattern="^sell_confirm$"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],
 
@@ -227,6 +256,23 @@ async def create_application(db: Database) -> Application:
                 CallbackQueryHandler(handle_settings_callback, pattern="^settings_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],
+
+            # Referral program
+            ConversationState.REFERRAL_MENU: [
+                CallbackQueryHandler(handle_claim_earnings, pattern="^ref_claim$"),
+                CallbackQueryHandler(handle_create_qr, pattern="^ref_qr$"),
+                CallbackQueryHandler(handle_add_to_group, pattern="^ref_group$"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+                CallbackQueryHandler(show_referral_menu, pattern="^noop$"),
+            ],
+            ConversationState.REFERRAL_CLAIM: [
+                CallbackQueryHandler(show_referral_menu, pattern="^menu_rewards$"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+            ConversationState.REFERRAL_QR: [
+                CallbackQueryHandler(show_referral_menu, pattern="^menu_rewards$"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
         },
         fallbacks=[
             CommandHandler("start", start_command),
@@ -245,6 +291,10 @@ async def create_application(db: Database) -> Application:
     application.add_handler(CommandHandler("portfolio", show_portfolio))
     application.add_handler(CommandHandler("orders", show_orders))
 
-    logger.info("Bot application configured with all handlers")
+    # Add admin panel handler
+    admin_handler = create_admin_handler()
+    application.add_handler(admin_handler)
+
+    logger.info("Bot application configured with all handlers (including admin panel)")
 
     return application
