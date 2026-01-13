@@ -304,9 +304,20 @@ async def confirm_withdraw(
 
     except Exception as e:
         logger.error(f"Withdrawal failed: {e}")
-        await query.edit_message_text(
-            f"❌ Withdrawal failed: {str(e)}\n\n🔄 Please try again."
-        )
+        # Provide user-friendly error message
+        error_str = str(e)
+        if "insufficient funds for gas" in error_str.lower():
+            user_message = (
+                "❌ Withdrawal failed: Insufficient gas funds\n\n"
+                "The system's gas sponsor wallet needs to be refilled with POL.\n"
+                "Please contact support or try again later."
+            )
+        else:
+            # Escape error message to prevent Markdown parsing issues
+            error_msg = error_str.replace('*', '\\*').replace('_', '\\_').replace('[', '\\[').replace('`', '\\`')
+            user_message = f"❌ Withdrawal failed:\n{error_msg}\n\n🔄 Please try again."
+
+        await query.edit_message_text(user_message)
 
     # Clear withdrawal data and 2FA verification
     for key in ["withdraw_amount", "withdraw_address", "withdraw_balance", "2fa_verified", "pending_2fa_action"]:
