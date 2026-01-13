@@ -154,7 +154,17 @@ class PolymarketCLOB:
 
         except Exception as e:
             logger.error(f"Market order failed: {e}")
-            return OrderResult(success=False, error=str(e))
+
+            # Provide user-friendly error messages
+            error_str = str(e)
+            if "No orderbook exists" in error_str:
+                error_msg = "This market has no active orders. Try a different market or use a limit order."
+            elif "not enough balance" in error_str.lower() or "insufficient" in error_str.lower():
+                error_msg = "Insufficient balance"
+            else:
+                error_msg = error_str
+
+            return OrderResult(success=False, error=error_msg)
 
     async def place_limit_order(
         self,
@@ -212,7 +222,15 @@ class PolymarketCLOB:
 
         except Exception as e:
             logger.error(f"Limit order failed: {e}")
-            return OrderResult(success=False, error=str(e))
+
+            # Provide user-friendly error messages
+            error_str = str(e)
+            if "not enough balance" in error_str.lower() or "insufficient" in error_str.lower():
+                error_msg = "Insufficient balance"
+            else:
+                error_msg = error_str
+
+            return OrderResult(success=False, error=error_msg)
 
     async def cancel_order(self, order_id: str) -> bool:
         """
