@@ -28,3 +28,6 @@ pydantic-settings
 
 # QR Code Generation
 qrcode[pil]
+
+# Two-Factor Authentication
+pyotp
