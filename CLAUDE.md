@@ -145,6 +145,102 @@ Status:      ✅ Success  ❌ Failed  ⏳ Pending  ⚠️ Warning  ℹ️ Info
   ```
 - **Run tests**: Always run `pytest` before committing to ensure nothing is broken.
 
+## Documentation
+
+All project documentation is organized in the `docs/` folder for easy maintenance and discovery.
+
+### Documentation Structure
+
+```
+polybot/
+├── README.md                    # Project overview (STAYS IN ROOT)
+├── CLAUDE.md                    # AI assistant guide (STAYS IN ROOT - THIS FILE)
+│
+├── docs/                        # All feature & setup documentation
+│   ├── README.md               # Documentation index
+│   ├── TESTING.md              # Integration test setup guide
+│   ├── 2FA_VERIFICATION_REPORT.md
+│   ├── BROADCAST_SYSTEM_SUMMARY.md
+│   └── [other feature docs]
+│
+└── tests/                       # Test documentation
+    ├── README.md               # Test suite overview
+    └── integration/
+        └── README.md           # Integration test guide
+```
+
+### When to Create Documentation
+
+**Create documentation in `docs/` for:**
+- ✅ Feature implementation reports (e.g., `2FA_VERIFICATION_REPORT.md`)
+- ✅ Setup and configuration guides (e.g., `TESTING.md`)
+- ✅ System summaries and architecture docs (e.g., `BROADCAST_SYSTEM_SUMMARY.md`)
+- ✅ Verification reports for completed features
+- ✅ Integration guides for external APIs
+
+**Keep in root directory:**
+- ✅ `README.md` - Main project overview and getting started
+- ✅ `CLAUDE.md` - This file, AI coding assistant guidelines
+
+**Keep with tests:**
+- ✅ `tests/README.md` - Test suite overview
+- ✅ `tests/integration/README.md` - Specific test category guides
+
+### Creating Documentation
+
+When adding new documentation:
+
+1. **Place in `docs/` folder**:
+   ```bash
+   # Create feature documentation
+   touch docs/NEW_FEATURE_REPORT.md
+   ```
+
+2. **Use descriptive naming**:
+   - ✅ `BROADCAST_SYSTEM_SUMMARY.md` (clear and specific)
+   - ❌ `BROADCAST.md` (too vague)
+   - ✅ `TESTING.md` (setup guide)
+   - ✅ `2FA_VERIFICATION_REPORT.md` (verification report)
+
+3. **Add to documentation index**:
+   - Update `docs/README.md` with link to new doc
+   - Categorize appropriately (Testing, Features, Guides, etc.)
+
+4. **Format guidelines**:
+   - Use markdown headers (`#`, `##`, `###`)
+   - Include code blocks with syntax highlighting
+   - Add table of contents for docs >200 lines
+   - Use emojis for visual organization (📚 📖 ✅ ❌ ⚠️)
+   - Link to related documentation
+
+5. **Commit with docs prefix**:
+   ```bash
+   git add docs/NEW_FEATURE_REPORT.md
+   git commit -m "docs: Add feature X implementation report"
+   ```
+
+### File Naming Convention
+
+- Use `SCREAMING_SNAKE_CASE.md` for reports and guides
+- Use `README.md` for directory indexes
+- Be descriptive and specific in names
+- Include document type in name (REPORT, GUIDE, SUMMARY, etc.)
+
+### Documentation Best Practices
+
+- **Keep it current**: Update docs when code changes
+- **Link related docs**: Reference other relevant documentation
+- **Include examples**: Show code examples and screenshots where helpful
+- **Use clear structure**: Headers, lists, tables for easy scanning
+- **No sensitive data**: Never include API keys, passwords, or private keys
+
+### Finding Documentation
+
+- **Quick reference**: See `docs/README.md` for full documentation index
+- **Testing**: Start with `docs/TESTING.md` or `tests/README.md`
+- **Features**: Check `docs/` for feature-specific reports
+- **Architecture**: Refer to this file (CLAUDE.md) for system architecture
+
 ## Environment
 
 Copy `.env.example` to `.env` and configure:

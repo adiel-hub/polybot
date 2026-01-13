@@ -8,6 +8,7 @@ from bot.conversations.states import ConversationState
 from bot.keyboards.main_menu import get_browse_keyboard
 from bot.keyboards.common import get_back_keyboard
 from utils.url_parser import is_polymarket_url, extract_slug_from_url, extract_url_from_text
+from utils.polymarket_scraper import scrape_market_from_url
 
 logger = logging.getLogger(__name__)
 
@@ -299,10 +300,118 @@ async def handle_search_input(
         # Fetch market by slug
         market = await market_service.get_market_by_slug(slug)
 
+        # If slug lookup fails, try searching with keywords from slug
         if not market:
+            # Convert slug to search query (replace hyphens with spaces)
+            search_query = slug.replace("-", " ")
+            logger.info(f"Slug lookup failed for '{slug}', trying search with '{search_query}'")
+
+            markets = await market_service.search_markets(search_query, limit=10)
+
+            if markets:
+                # If we found results, show them as search results
+                context.user_data["browse_markets"] = {m.condition_id: m for m in markets[:5]}
+
+                text = f'🔍 *Results for Polymarket URL*\n\n'
+                text += f"_Direct slug lookup failed, showing search results for: {search_query}_\n\n"
+
+                keyboard = []
+                for i, m in enumerate(markets[:5], 1):
+                    yes_cents = int(m.yes_price * 100)
+
+                    text += (
+                        f"{i}) {m.question[:60]}{'...' if len(m.question) > 60 else ''}\n"
+                        f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${m.volume_24h:,.0f}`\n\n"
+                    )
+
+                    keyboard.append([
+                        InlineKeyboardButton(
+                            f"📈 {i}. Trade",
+                            callback_data=f"market_{m.condition_id[:20]}",
+                        )
+                    ])
+
+                keyboard.append([
+                    InlineKeyboardButton("🔙 Back", callback_data="menu_browse"),
+                    InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
+                ])
+
+                await update.message.reply_text(
+                    text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="Markdown",
+                )
+
+                return ConversationState.BROWSE_RESULTS
+
+            # No results from search either, try web scraping as final fallback
+            logger.info(f"Search failed, trying web scraper for {url}")
+
+            scraped_data = await scrape_market_from_url(url)
+
+            if scraped_data and scraped_data.get("condition_id"):
+                # Try to fetch market details using the scraped condition_id
+                condition_id = scraped_data["condition_id"]
+                market = await market_service.get_market_detail(condition_id)
+
+                if market:
+                    # Success! Store and display the market
+                    context.user_data["current_market"] = {
+                        "condition_id": market.condition_id,
+                        "question": market.question,
+                        "yes_token_id": market.yes_token_id,
+                        "no_token_id": market.no_token_id,
+                        "yes_price": market.yes_price,
+                        "no_price": market.no_price,
+                    }
+
+                    yes_cents = market.yes_price * 100
+                    no_cents = market.no_price * 100
+
+                    text = (
+                        f"🔗 *Market from URL*\n"
+                        f"{'─' * 35}\n\n"
+                        f"📊 {market.question}\n\n"
+                        f"💰 *Current Prices*\n"
+                        f"├ ✅ Yes: `{yes_cents:.1f}c`\n"
+                        f"└ ❌ No: `{no_cents:.1f}c`\n\n"
+                        f"📈 *Market Stats*\n"
+                        f"├ 📊 Volume (All): `${market.total_volume:,.2f}`\n"
+                        f"├ 📊 Volume (24h): `${market.volume_24h:,.2f}`\n"
+                        f"└ 💧 Liquidity: `${market.liquidity:,.2f}`\n"
+                    )
+
+                    if market.end_date:
+                        text += f"\n⏰ *Timeline*\n└ 📅 Expires: {market.end_date}\n"
+
+                    keyboard = [
+                        [
+                            InlineKeyboardButton("📈 Buy Yes", callback_data="trade_buy_yes"),
+                            InlineKeyboardButton("📉 Buy No", callback_data="trade_buy_no"),
+                        ],
+                        [
+                            InlineKeyboardButton("📊 Limit Yes", callback_data="trade_limit_yes"),
+                            InlineKeyboardButton("📊 Limit No", callback_data="trade_limit_no"),
+                        ],
+                        [
+                            InlineKeyboardButton("🔙 Browse", callback_data="menu_browse"),
+                            InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
+                        ],
+                    ]
+
+                    await update.message.reply_text(
+                        text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode="Markdown",
+                    )
+
+                    return ConversationState.MARKET_DETAIL
+
+            # Final failure - couldn't find market via any method
             await update.message.reply_text(
-                f"❌ Market not found for slug: `{slug}`\n\n"
-                "The market may have been removed or the URL is invalid.",
+                f"❌ Market not found for URL.\n\n"
+                f"Slug: `{slug}`\n"
+                "The market may have been removed or is not available.",
                 reply_markup=get_back_keyboard("menu_browse"),
                 parse_mode="Markdown",
             )
