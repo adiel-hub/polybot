@@ -142,6 +142,11 @@ async def handle_stop_loss_callback(
     elif callback_data.startswith("sl_remove_") or callback_data.startswith("remove_stoploss_"):
         sl_id = int(callback_data.replace("sl_remove_", "").replace("remove_stoploss_", ""))
         stop_loss_repo = StopLossRepository(db)
+
+        # Get stop loss to find the position
+        stop_loss = await stop_loss_repo.get_by_id(sl_id)
+        position_id = stop_loss.position_id if stop_loss else None
+
         await stop_loss_repo.deactivate(sl_id)
 
         # Remove from real-time monitoring
@@ -150,8 +155,19 @@ async def handle_stop_loss_callback(
             await ws_service.remove_stop_loss(sl_id)
             logger.info(f"Removed stop loss {sl_id} from real-time monitoring")
 
-        await query.edit_message_text("✅ Stop loss removed.")
-        return await show_stop_loss_menu(update, context)
+        # If called from portfolio (remove_stoploss_), go back to position view
+        if callback_data.startswith("remove_stoploss_") and position_id:
+            from bot.handlers.portfolio import handle_position_callback
+            # Create a fake callback with position data
+            original_data = query.data
+            query.data = f"position_{position_id}"
+            result = await handle_position_callback(update, context)
+            query.data = original_data  # Restore original
+            return result
+        else:
+            # Called from stop loss menu (sl_remove_)
+            await query.edit_message_text("✅ Stop loss removed.")
+            return await show_stop_loss_menu(update, context)
 
     return ConversationState.SELECT_POSITION
 
