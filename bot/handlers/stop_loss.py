@@ -143,7 +143,7 @@ async def handle_stop_loss_callback(
         sl_id = int(callback_data.replace("sl_remove_", "").replace("remove_stoploss_", ""))
         stop_loss_repo = StopLossRepository(db)
 
-        # Get stop loss to find the position
+        # Get stop loss to find the position before deactivating
         stop_loss = await stop_loss_repo.get_by_id(sl_id)
         position_id = stop_loss.position_id if stop_loss else None
 
@@ -155,15 +155,20 @@ async def handle_stop_loss_callback(
             await ws_service.remove_stop_loss(sl_id)
             logger.info(f"Removed stop loss {sl_id} from real-time monitoring")
 
-        # If called from portfolio (remove_stoploss_), go back to position view
+        # If called from portfolio (remove_stoploss_), show success and back button
         if callback_data.startswith("remove_stoploss_") and position_id:
-            from bot.handlers.portfolio import handle_position_callback
-            # Create a fake callback with position data
-            original_data = query.data
-            query.data = f"position_{position_id}"
-            result = await handle_position_callback(update, context)
-            query.data = original_data  # Restore original
-            return result
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            keyboard = [
+                [InlineKeyboardButton("🔙 Back to Position", callback_data=f"position_{position_id}")],
+                [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+            ]
+            await query.edit_message_text(
+                "✅ *Stop Loss Removed*\n\n"
+                "Your position is no longer protected by a stop loss.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown",
+            )
+            return ConversationState.PORTFOLIO_VIEW
         else:
             # Called from stop loss menu (sl_remove_)
             await query.edit_message_text("✅ Stop loss removed.")
