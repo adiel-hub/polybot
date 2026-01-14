@@ -22,18 +22,27 @@ async def show_referral_menu(
         await query.answer()
 
     user = update.effective_user
+    logger.info(f"[REFERRAL MENU] User {user.id} (@{user.username}) viewing referral menu")
+
     referral_service = context.bot_data["referral_service"]
     user_service = context.bot_data["user_service"]
 
     # Ensure user has a referral code (generate if missing)
     stats = await referral_service.get_referral_stats(user.id)
+    logger.info(f"[REFERRAL MENU] User {user.id} stats: {stats}")
+
     if not stats['referral_code']:
-        await user_service.generate_referral_code_for_user(user.id)
+        logger.warning(f"[REFERRAL MENU] User {user.id} has no referral code, generating one...")
+        new_code = await user_service.generate_referral_code_for_user(user.id)
+        logger.info(f"[REFERRAL MENU] Generated code '{new_code}' for user {user.id}")
         stats = await referral_service.get_referral_stats(user.id)
+        logger.info(f"[REFERRAL MENU] Updated stats after generation: {stats}")
 
     # Get referral link
     bot_username = context.bot.username
+    logger.info(f"[REFERRAL MENU] Bot username: {bot_username}")
     referral_link = await referral_service.get_referral_link(user.id, bot_username)
+    logger.info(f"[REFERRAL MENU] Generated referral link: '{referral_link}'")
 
     # Build referral menu message
     message = (
