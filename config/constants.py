@@ -42,6 +42,9 @@ CLOB_CONTRACTS = {
     "NegRisk Exchange": "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296",
 }
 
+# Polymarket CTF (Conditional Token Framework) contract - for position token approvals
+CTF_CONTRACT = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
+
 # License agreement text
 LICENSE_TEXT = """
 *Welcome to PolyBot*

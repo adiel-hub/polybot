@@ -11,7 +11,7 @@ from eth_account import Account
 
 from database.connection import Database
 from database.repositories import WalletRepository, UserRepository
-from config.constants import USDC_ADDRESS, USDC_E_ADDRESS, USDC_DECIMALS, TRANSFER_EVENT_SIGNATURE, CLOB_CONTRACTS
+from config.constants import USDC_ADDRESS, USDC_E_ADDRESS, USDC_DECIMALS, TRANSFER_EVENT_SIGNATURE, CLOB_CONTRACTS, CTF_CONTRACT
 from config import settings
 from services.user_service import UserService
 from core.wallet.encryption import KeyEncryption
@@ -74,6 +74,33 @@ class DepositSubscriber:
                     ],
                     'name': 'allowance',
                     'outputs': [{'name': '', 'type': 'uint256'}],
+                    'type': 'function',
+                },
+            ],
+        )
+
+        # CTF (Conditional Token Framework) contract for position token approvals
+        self.ctf_contract = self.w3.eth.contract(
+            address=Web3.to_checksum_address(CTF_CONTRACT),
+            abi=[
+                {
+                    'constant': False,
+                    'inputs': [
+                        {'name': 'operator', 'type': 'address'},
+                        {'name': 'approved', 'type': 'bool'},
+                    ],
+                    'name': 'setApprovalForAll',
+                    'outputs': [],
+                    'type': 'function',
+                },
+                {
+                    'constant': True,
+                    'inputs': [
+                        {'name': 'owner', 'type': 'address'},
+                        {'name': 'operator', 'type': 'address'},
+                    ],
+                    'name': 'isApprovedForAll',
+                    'outputs': [{'name': '', 'type': 'bool'}],
                     'type': 'function',
                 },
             ],
@@ -373,6 +400,96 @@ class DepositSubscriber:
             logger.error(f"Auto-approval error for user {user.id}: {e}")
             return None
 
+    async def _auto_approve_ctf_selling(self, wallet, user) -> Optional[str]:
+        """
+        Auto-approve CTF contract to transfer position tokens (for selling).
+        User pays their own gas fees.
+
+        Returns:
+            Status message for user notification, or None if already approved
+        """
+        try:
+            # Get user's private key
+            user_service = UserService(self.db, KeyEncryption(settings.master_encryption_key))
+            private_key = await user_service.get_private_key(user.id)
+
+            if not private_key:
+                logger.error(f"Could not get private key for user {user.id}")
+                return None
+
+            account = Account.from_key(private_key)
+            user_address = account.address
+
+            # Check which CLOB contracts need CTF approval for selling
+            contracts_to_approve = []
+            for name, address in CLOB_CONTRACTS.items():
+                try:
+                    is_approved = self.ctf_contract.functions.isApprovedForAll(
+                        Web3.to_checksum_address(user_address),
+                        Web3.to_checksum_address(address),
+                    ).call()
+
+                    if not is_approved:
+                        contracts_to_approve.append((name, address))
+                except Exception as e:
+                    logger.error(f"Error checking CTF approval for {name}: {e}")
+                    continue
+
+            if not contracts_to_approve:
+                logger.info(f"All CLOB contracts already approved for selling for user {user.id}")
+                return None
+
+            # Check if user has POL for gas
+            user_pol = self.w3.eth.get_balance(user_address) / 1e18
+            gas_price = self.w3.eth.gas_price
+            estimated_gas_cost = (100000 * gas_price * len(contracts_to_approve)) / 1e18
+
+            if user_pol < estimated_gas_cost * 1.5:  # 50% buffer
+                logger.warning(
+                    f"User {user.id} has insufficient POL for CTF auto-approval: "
+                    f"{user_pol:.4f} POL < {estimated_gas_cost * 1.5:.4f} POL needed"
+                )
+                return "⚠️ *Selling Setup Pending*\n\nYou need ~0.01 POL to enable selling\\. Please deposit POL to complete setup\\."
+
+            # Approve each contract
+            approved_count = 0
+            for name, address in contracts_to_approve:
+                try:
+                    # Build setApprovalForAll transaction
+                    tx = self.ctf_contract.functions.setApprovalForAll(
+                        Web3.to_checksum_address(address),
+                        True,
+                    ).build_transaction({
+                        'from': user_address,
+                        'nonce': self.w3.eth.get_transaction_count(user_address) + approved_count,
+                        'gas': 100000,
+                        'gasPrice': gas_price,
+                        'chainId': settings.chain_id,
+                    })
+
+                    # User signs and sends
+                    signed = account.sign_transaction(tx)
+                    tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
+
+                    logger.info(f"Auto-approved CTF for {name} for user {user.id}: {tx_hash.hex()}")
+                    approved_count += 1
+
+                    # Small delay between transactions
+                    await asyncio.sleep(2)
+
+                except Exception as e:
+                    logger.error(f"Failed to approve CTF for {name} for user {user.id}: {e}")
+                    # Continue with other approvals even if one fails
+
+            if approved_count > 0:
+                return f"🎉 *Selling Enabled!*\n\nApproved {approved_count} contract{'s' if approved_count > 1 else ''} for selling positions\\. You can now sell your positions!"
+            else:
+                return None
+
+        except Exception as e:
+            logger.error(f"CTF auto-approval error for user {user.id}: {e}")
+            return None
+
     async def _process_deposit(
         self,
         to_address: str,
@@ -400,16 +517,28 @@ class DepositSubscriber:
             # Update wallet balance
             await wallet_repo.add_balance(wallet.id, amount)
 
-            # Auto-approve USDC.e for trading if this is their first USDC.e deposit
-            approval_status = ""
+            # Auto-approve USDC.e for buying AND CTF for selling
+            approval_messages = []
             if token_address.lower() == USDC_E_ADDRESS.lower():
+                # Approve USDC.e for buying
                 try:
                     approval_result = await self._auto_approve_trading(wallet, user)
                     if approval_result:
-                        approval_status = approval_result
+                        approval_messages.append(approval_result)
                 except Exception as e:
-                    logger.error(f"Auto-approval failed for user {user.id}: {e}")
+                    logger.error(f"USDC auto-approval failed for user {user.id}: {e}")
                     # Don't fail deposit processing if approval fails
+
+                # Approve CTF for selling positions
+                try:
+                    ctf_approval_result = await self._auto_approve_ctf_selling(wallet, user)
+                    if ctf_approval_result:
+                        approval_messages.append(ctf_approval_result)
+                except Exception as e:
+                    logger.error(f"CTF auto-approval failed for user {user.id}: {e}")
+                    # Don't fail deposit processing if approval fails
+
+            approval_status = "\n\n".join(approval_messages) if approval_messages else ""
 
             # Notify user
             if self.bot_send_message:
