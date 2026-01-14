@@ -1,6 +1,7 @@
 """Market browsing handlers."""
 
 import logging
+from datetime import datetime, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.error import BadRequest
@@ -13,6 +14,26 @@ from utils.polymarket_scraper import scrape_market_from_url
 from utils.short_id import generate_short_id
 
 logger = logging.getLogger(__name__)
+
+
+def is_market_expired(market) -> bool:
+    """Check if a market has expired based on its end_date."""
+    if not market.end_date:
+        return False
+    try:
+        end_dt = datetime.fromisoformat(market.end_date.replace('Z', '+00:00'))
+        return datetime.now(timezone.utc) > end_dt
+    except (ValueError, AttributeError):
+        return False
+
+
+def filter_active_markets(markets: list) -> list:
+    """Filter out expired and non-tradeable markets."""
+    return [
+        m for m in markets
+        if not is_market_expired(m)
+        and not (m.volume_24h == 0 and m.total_volume == 0 and m.liquidity == 0)
+    ]
 
 
 async def show_browse_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -139,11 +160,8 @@ async def handle_browse_callback(
     # Get bot username for deep links
     bot_username = context.bot.username
 
-    # Filter out non-tradeable markets (0 volume AND 0 liquidity)
-    tradeable_markets = [
-        m for m in markets
-        if not (m.volume_24h == 0 and m.total_volume == 0 and m.liquidity == 0)
-    ]
+    # Filter out expired and non-tradeable markets
+    tradeable_markets = filter_active_markets(markets)
 
     for i, market in enumerate(tradeable_markets, 1):
         # Format prices as percentages
@@ -382,11 +400,8 @@ async def handle_search_input(
                 # Get bot username for deep links
                 bot_username = context.bot.username
 
-                # Filter out non-tradeable markets
-                tradeable_markets = [
-                    m for m in markets[:5]
-                    if not (m.volume_24h == 0 and m.total_volume == 0 and m.liquidity == 0)
-                ]
+                # Filter out expired and non-tradeable markets
+                tradeable_markets = filter_active_markets(markets[:5])
 
                 for i, m in enumerate(tradeable_markets, 1):
                     yes_cents = int(m.yes_price * 100)
@@ -624,11 +639,8 @@ async def handle_search_input(
     # Get bot username for deep links
     bot_username = context.bot.username
 
-    # Filter out non-tradeable markets (0 volume AND 0 liquidity)
-    tradeable_markets = [
-        m for m in markets
-        if not (m.volume_24h == 0 and m.total_volume == 0 and m.liquidity == 0)
-    ]
+    # Filter out expired and non-tradeable markets
+    tradeable_markets = filter_active_markets(markets)
 
     for i, market in enumerate(tradeable_markets, 1):
         yes_cents = int(market.yes_price * 100)
