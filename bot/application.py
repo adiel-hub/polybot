@@ -183,6 +183,7 @@ async def create_application(db: Database) -> Application:
                 CallbackQueryHandler(handle_position_callback, pattern="^position_"),
                 CallbackQueryHandler(handle_sell_position, pattern="^sell_position_"),
                 CallbackQueryHandler(handle_stop_loss_callback, pattern="^stoploss_"),
+                CallbackQueryHandler(handle_stop_loss_callback, pattern="^remove_stoploss_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],
 
