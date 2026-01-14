@@ -71,6 +71,7 @@ from bot.handlers.two_factor import (
 from bot.handlers.referral import (
     show_referral_menu,
     handle_claim_earnings,
+    handle_claim_disabled,
     handle_create_qr,
     handle_add_to_group,
 )
@@ -278,6 +279,7 @@ async def create_application(db: Database) -> Application:
             # Referral program
             ConversationState.REFERRAL_MENU: [
                 CallbackQueryHandler(handle_claim_earnings, pattern="^ref_claim$"),
+                CallbackQueryHandler(handle_claim_disabled, pattern="^ref_claim_disabled$"),
                 CallbackQueryHandler(handle_create_qr, pattern="^ref_qr$"),
                 CallbackQueryHandler(handle_add_to_group, pattern="^ref_group$"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),

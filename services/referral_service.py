@@ -179,13 +179,13 @@ class ReferralService:
             bot_username: Telegram bot username (default: TradePolyBot)
 
         Returns:
-            Referral link (e.g., t.me/TradePolyBot?start=ref_1184qzv)
+            Referral link (e.g., https://t.me/TradePolyBot?start=ref_1184qzv)
         """
         user = await self.user_repo.get_by_id(user_id)
         if not user or not user.referral_code:
             return ""
 
-        return f"t.me/{bot_username}?start=ref_{user.referral_code}"
+        return f"https://t.me/{bot_username}?start=ref_{user.referral_code}"
 
     async def claim_earnings(self, user_id: int) -> Tuple[bool, str]:
         """

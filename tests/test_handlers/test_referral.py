@@ -30,7 +30,7 @@ async def test_handle_create_qr_generates_valid_qr():
     # Mock referral service
     referral_service = AsyncMock()
     referral_service.get_referral_link = AsyncMock(
-        return_value="https://t.me/test_bot?start=ref_67890"
+        return_value="https://t.me/test_bot?start=ref_abc1234"
     )
     context.bot_data = {"referral_service": referral_service}
 
@@ -52,7 +52,7 @@ async def test_handle_create_qr_generates_valid_qr():
 
     # Check caption
     assert "Your Referral QR Code" in call_args.kwargs['caption']
-    assert "https://t.me/test_bot?start=ref_67890" in call_args.kwargs['caption']
+    assert "https://t.me/test_bot?start=ref_abc1234" in call_args.kwargs['caption']
 
     # Check photo is a BytesIO object
     photo = call_args.kwargs['photo']
@@ -86,7 +86,7 @@ async def test_handle_create_qr_qr_code_contains_correct_data():
     context.bot.username = "test_bot"
     context.bot.send_photo = AsyncMock()
 
-    referral_link = "https://t.me/test_bot?start=ref_67890"
+    referral_link = "https://t.me/test_bot?start=ref_abc1234"
     referral_service = AsyncMock()
     referral_service.get_referral_link = AsyncMock(return_value=referral_link)
     context.bot_data = {"referral_service": referral_service}
@@ -134,7 +134,7 @@ async def test_handle_create_qr_with_special_characters_in_link():
     context.bot.send_photo = AsyncMock()
 
     # Link with special characters
-    referral_link = "https://t.me/test_bot?start=ref_67890&utm_source=telegram&utm_campaign=test"
+    referral_link = "https://t.me/test_bot?start=ref_abc1234&utm_source=telegram&utm_campaign=test"
     referral_service = AsyncMock()
     referral_service.get_referral_link = AsyncMock(return_value=referral_link)
     context.bot_data = {"referral_service": referral_service}
@@ -168,7 +168,7 @@ async def test_handle_create_qr_keyboard_buttons():
 
     referral_service = AsyncMock()
     referral_service.get_referral_link = AsyncMock(
-        return_value="https://t.me/test_bot?start=ref_67890"
+        return_value="https://t.me/test_bot?start=ref_abc1234"
     )
     context.bot_data = {"referral_service": referral_service}
 

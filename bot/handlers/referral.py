@@ -73,7 +73,7 @@ async def show_referral_menu(
         keyboard.append([
             InlineKeyboardButton(
                 f"💵 Claim ${stats['claimable']:.2f}",
-                callback_data="noop"
+                callback_data="ref_claim_disabled"
             )
         ])
 
@@ -107,6 +107,22 @@ async def show_referral_menu(
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown",
         )
+
+    return ConversationState.REFERRAL_MENU
+
+
+async def handle_claim_disabled(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Handle disabled claim button - show popup with minimum amount."""
+    query = update.callback_query
+    referral_service = context.bot_data["referral_service"]
+
+    await query.answer(
+        f"⚠️ Minimum claim amount is ${referral_service.MIN_CLAIM_AMOUNT:.2f}. Keep earning!",
+        show_alert=True
+    )
 
     return ConversationState.REFERRAL_MENU
 
