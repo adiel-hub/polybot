@@ -304,6 +304,7 @@ async def confirm_withdraw(
 
     except Exception as e:
         logger.error(f"Withdrawal failed: {e}")
+        logger.info("💡 Withdrawal error handler version: 2.0 (with curly brace escaping)")
         # Provide user-friendly error message
         error_str = str(e)
         if "insufficient funds for gas" in error_str.lower():
@@ -325,7 +326,12 @@ async def confirm_withdraw(
             user_message = f"❌ Withdrawal failed:\n{error_msg}\n\n🔄 Please try again."
 
         # Don't use parse_mode to avoid any parsing issues
-        await query.edit_message_text(user_message, parse_mode=None)
+        try:
+            await query.edit_message_text(user_message, parse_mode=None)
+        except Exception as edit_error:
+            logger.error(f"Failed to edit message: {edit_error}")
+            # Fallback: send new message instead
+            await query.message.reply_text(user_message, parse_mode=None)
 
     # Clear withdrawal data and 2FA verification
     for key in ["withdraw_amount", "withdraw_address", "withdraw_balance", "2fa_verified", "pending_2fa_action"]:
