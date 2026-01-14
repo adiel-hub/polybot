@@ -144,7 +144,7 @@ async def handle_browse_callback(
         # Build Polymarket URL if slug exists
         polymarket_link = ""
         if market.slug:
-            polymarket_url = f"https://polymarket.com/event/{market.slug}"
+            polymarket_url = f"https://polymarket.com/market/{market.slug}"
             polymarket_link = f" │ [🔗 View]({polymarket_url})"
 
         text += (
@@ -264,7 +264,7 @@ async def show_market_detail(
 
     # Add Polymarket link if slug exists
     if market.slug:
-        polymarket_url = f"https://polymarket.com/event/{market.slug}"
+        polymarket_url = f"https://polymarket.com/market/{market.slug}"
         text += f"\n🔗 [View on Polymarket]({polymarket_url})\n"
 
     keyboard = [
@@ -531,7 +531,7 @@ async def handle_search_input(
         # Build Polymarket URL if slug exists
         polymarket_link = ""
         if market.slug:
-            polymarket_url = f"https://polymarket.com/event/{market.slug}"
+            polymarket_url = f"https://polymarket.com/market/{market.slug}"
             polymarket_link = f" │ [🔗 View]({polymarket_url})"
 
         text += (
