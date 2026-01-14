@@ -3,6 +3,7 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from telegram.error import BadRequest
 
 from bot.conversations.states import ConversationState
 from bot.keyboards.main_menu import get_browse_keyboard
@@ -128,7 +129,8 @@ async def handle_browse_callback(
         "15m": "⏱️ 15m Up or Down",
     }
 
-    text = f"💹 *Market Search - {category_names.get(category, category.title())}*\n\n"
+    text = f"💹 *Market Search - {category_names.get(category, category.title())}*\n"
+    text += f"📄 Page {page}/{total_pages}\n\n"
 
     keyboard = []
     for i, market in enumerate(markets, 1):
@@ -175,11 +177,18 @@ async def handle_browse_callback(
         InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
     ])
 
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
-    )
+    try:
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+    except BadRequest as e:
+        if "message is not modified" in str(e):
+            # Message content is identical, just answer the callback
+            await query.answer("Already on this page")
+        else:
+            raise
 
     return ConversationState.BROWSE_RESULTS
 
