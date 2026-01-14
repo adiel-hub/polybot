@@ -29,6 +29,9 @@ class Market:
     end_date: Optional[str]
     is_active: bool
     slug: Optional[str] = None
+    event_id: Optional[str] = None  # Parent event ID for multi-outcome markets
+    event_title: Optional[str] = None  # Parent event title
+    outcomes_count: int = 1  # Number of outcomes in parent event
 
     @classmethod
     def from_api(cls, data: Dict[str, Any], market_data: Dict[str, Any] = None) -> "Market":
@@ -68,6 +71,10 @@ class Market:
         yes_price = float(outcomes[0]) if len(outcomes) > 0 else 0.5
         no_price = float(outcomes[1]) if len(outcomes) > 1 else 0.5
 
+        # Get event info for multi-outcome tracking
+        markets_list = data.get("markets", [])
+        outcomes_count = len(markets_list) if markets_list else 1
+
         return cls(
             condition_id=market.get("conditionId", data.get("id", "")),
             question=market.get("question", data.get("title", "")),
@@ -84,6 +91,9 @@ class Market:
             end_date=market.get("endDate", data.get("endDate")),
             is_active=market.get("active", True) and not market.get("closed", False),
             slug=market.get("slug", data.get("slug")),
+            event_id=data.get("id"),
+            event_title=data.get("title"),
+            outcomes_count=outcomes_count,
         )
 
     @classmethod
@@ -214,6 +224,47 @@ class GammaMarketClient:
             limit=limit,
             order="createdAt",
         )
+
+    async def get_event_by_id(self, event_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get event by ID with all its markets/outcomes.
+
+        Args:
+            event_id: Event ID
+
+        Returns:
+            Event data dict with markets array, or None
+        """
+        try:
+            client = await self._get_client()
+
+            response = await client.get(f"{self.host}/events/{event_id}")
+
+            if response.status_code == 404:
+                return None
+
+            response.raise_for_status()
+            return response.json()
+
+        except Exception as e:
+            logger.error(f"Failed to fetch event {event_id}: {e}")
+            return None
+
+    async def get_event_markets(self, event_id: str) -> List[Market]:
+        """
+        Get all markets/outcomes for an event.
+
+        Args:
+            event_id: Event ID
+
+        Returns:
+            List of Market objects for each outcome
+        """
+        event_data = await self.get_event_by_id(event_id)
+        if not event_data:
+            return []
+
+        return Market.all_from_event(event_data)
 
     async def get_market_by_condition_id(self, condition_id: str) -> Optional[Market]:
         """

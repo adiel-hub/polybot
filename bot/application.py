@@ -23,6 +23,7 @@ from bot.handlers.markets import (
     show_browse_menu,
     handle_browse_callback,
     show_market_detail,
+    show_event_options,
     handle_search_input,
 )
 from bot.handlers.trading import (
@@ -133,9 +134,16 @@ async def create_application(db: Database) -> Application:
             ],
             ConversationState.BROWSE_RESULTS: [
                 CallbackQueryHandler(show_market_detail, pattern="^market_"),
+                CallbackQueryHandler(show_event_options, pattern="^event_options_"),
                 CallbackQueryHandler(handle_browse_callback, pattern="^browse_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_search_input),
+            ],
+            ConversationState.EVENT_OPTIONS: [
+                CallbackQueryHandler(show_event_options, pattern="^event_options_"),
+                CallbackQueryHandler(show_market_detail, pattern="^market_"),
+                CallbackQueryHandler(handle_browse_callback, pattern="^browse_"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],
 
             # Market detail and trading

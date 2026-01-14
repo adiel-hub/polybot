@@ -17,6 +17,7 @@ class ConversationState(IntEnum):
     BROWSE_RESULTS = auto()
     MARKET_DETAIL = auto()
     SEARCH_INPUT = auto()
+    EVENT_OPTIONS = auto()  # View all outcomes for multi-outcome event
 
     # Trading flow
     SELECT_OUTCOME = auto()

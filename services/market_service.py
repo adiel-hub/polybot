@@ -77,6 +77,10 @@ class MarketService:
         """Get current price for a token."""
         return await self.gamma_client.get_market_price(token_id)
 
+    async def get_event_markets(self, event_id: str) -> List[Market]:
+        """Get all markets/outcomes for an event."""
+        return await self.gamma_client.get_event_markets(event_id)
+
     async def get_categories(self) -> List[Dict[str, str]]:
         """Get available categories for browsing."""
         return [
