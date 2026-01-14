@@ -271,6 +271,45 @@ class WithdrawalManager:
             logger.error(f"Failed to check tx status: {e}")
             return None
 
+    async def wait_for_transaction(
+        self,
+        tx_hash: str,
+        timeout: int = 60,
+        poll_interval: float = 2.0,
+    ) -> bool:
+        """
+        Wait for a transaction to be confirmed on-chain.
+
+        Args:
+            tx_hash: Transaction hash to wait for
+            timeout: Maximum time to wait in seconds
+            poll_interval: Time between checks in seconds
+
+        Returns:
+            True if confirmed, False if timeout or failed
+        """
+        import asyncio
+
+        attempts = int(timeout / poll_interval)
+
+        for i in range(attempts):
+            try:
+                receipt = self.w3.eth.get_transaction_receipt(tx_hash)
+                if receipt:
+                    if receipt.status == 1:
+                        logger.info(f"Transaction {tx_hash[:16]}... confirmed in block {receipt.blockNumber}")
+                        return True
+                    else:
+                        logger.error(f"Transaction {tx_hash[:16]}... failed")
+                        return False
+            except Exception:
+                pass  # Transaction not yet mined
+
+            await asyncio.sleep(poll_interval)
+
+        logger.warning(f"Transaction {tx_hash[:16]}... timed out after {timeout}s")
+        return False
+
     async def get_gas_balance(self, address: str) -> float:
         """
         Get POL (gas) balance for an address.

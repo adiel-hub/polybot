@@ -296,17 +296,8 @@ async def confirm_withdraw(
                 logger.info(f"User needs POL for approval, sponsoring gas")
                 gas_result = await withdrawal_mgr.sponsor_gas(wallet.address, 0.02)
                 if gas_result.success and gas_result.tx_hash != "already_approved":
-                    # Wait for gas to arrive
-                    import asyncio
-                    for i in range(30):
-                        await asyncio.sleep(2)
-                        try:
-                            receipt = withdrawal_mgr.w3.eth.get_transaction_receipt(gas_result.tx_hash)
-                            if receipt and receipt.status == 1:
-                                logger.info(f"Gas transfer confirmed")
-                                break
-                        except Exception:
-                            pass
+                    # Wait for gas transfer to be confirmed
+                    await withdrawal_mgr.wait_for_transaction(gas_result.tx_hash, timeout=60)
 
             # Approve gas sponsor
             approval_result = await withdrawal_mgr.approve_gas_sponsor(private_key)
@@ -322,17 +313,7 @@ async def confirm_withdraw(
 
             # Wait for approval to be mined if it's a new approval
             if approval_result.tx_hash != "already_approved":
-                logger.info(f"Waiting for approval tx: {approval_result.tx_hash}")
-                import asyncio
-                for i in range(30):
-                    await asyncio.sleep(2)
-                    try:
-                        receipt = withdrawal_mgr.w3.eth.get_transaction_receipt(approval_result.tx_hash)
-                        if receipt and receipt.status == 1:
-                            logger.info(f"Approval confirmed in block {receipt.blockNumber}")
-                            break
-                    except Exception:
-                        pass
+                await withdrawal_mgr.wait_for_transaction(approval_result.tx_hash, timeout=60)
 
             # Retry withdrawal
             await query.edit_message_text("⏳ Processing withdrawal...")
