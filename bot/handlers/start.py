@@ -93,6 +93,13 @@ async def license_accept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             referral_service = context.bot_data["referral_service"]
             await referral_service.link_referral(new_user.id, referral_code)
 
+        # Check if there was a deep link market
+        deep_link_market = context.user_data.get("deep_link_market")
+        if deep_link_market:
+            # Transfer to pending_market_id for menu handler
+            context.user_data["pending_market_id"] = deep_link_market
+            logger.info(f"New user registered via market deep link: {deep_link_market}")
+
         # Show success message
         await query.edit_message_text(
             f"✅ *Your PolyBot wallet is ready!*\n\n"
@@ -113,7 +120,7 @@ async def license_accept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             parse_mode="Markdown",
         )
 
-        # Show main menu after a brief delay
+        # Show main menu (or market detail if deep link) after a brief delay
         return await show_main_menu(update, context, send_new=True)
 
     except Exception as e:
