@@ -6,10 +6,15 @@ import json
 from typing import Dict, Any, Optional, Callable, Set
 
 import websockets
+from web3 import Web3
+from eth_account import Account
 
 from database.connection import Database
 from database.repositories import WalletRepository, UserRepository
-from config.constants import USDC_ADDRESS, USDC_E_ADDRESS, USDC_DECIMALS, TRANSFER_EVENT_SIGNATURE
+from config.constants import USDC_ADDRESS, USDC_E_ADDRESS, USDC_DECIMALS, TRANSFER_EVENT_SIGNATURE, CLOB_CONTRACTS
+from config import settings
+from services.user_service import UserService
+from core.wallet.encryption import KeyEncryption
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +48,36 @@ class DepositSubscriber:
 
         # Track monitored wallet addresses (lowercase for comparison)
         self._wallet_addresses: Set[str] = set()
+
+        # Initialize web3 for auto-approval transactions
+        self.w3 = Web3(Web3.HTTPProvider(settings.polygon_rpc_url))
+
+        # USDC.e contract for approvals
+        self.usdc_e_contract = self.w3.eth.contract(
+            address=Web3.to_checksum_address(USDC_E_ADDRESS),
+            abi=[
+                {
+                    'constant': False,
+                    'inputs': [
+                        {'name': '_spender', 'type': 'address'},
+                        {'name': '_value', 'type': 'uint256'},
+                    ],
+                    'name': 'approve',
+                    'outputs': [{'name': '', 'type': 'bool'}],
+                    'type': 'function',
+                },
+                {
+                    'constant': True,
+                    'inputs': [
+                        {'name': '_owner', 'type': 'address'},
+                        {'name': '_spender', 'type': 'address'},
+                    ],
+                    'name': 'allowance',
+                    'outputs': [{'name': '', 'type': 'uint256'}],
+                    'type': 'function',
+                },
+            ],
+        )
 
     async def start(self) -> None:
         """Start the deposit subscriber."""
@@ -241,6 +276,98 @@ class DepositSubscriber:
             topic = topic[2:]
         return "0x" + topic[-40:]
 
+    async def _auto_approve_trading(self, wallet, user) -> Optional[str]:
+        """
+        Auto-approve USDC.e for Polymarket CLOB contracts on first deposit.
+        User pays their own gas fees.
+
+        Returns:
+            Status message for user notification, or None if already approved
+        """
+        try:
+            # Get user's private key
+            user_service = UserService(self.db, KeyEncryption(settings.master_encryption_key))
+            private_key = await user_service.get_private_key(user.id)
+
+            if not private_key:
+                logger.error(f"Could not get private key for user {user.id}")
+                return None
+
+            account = Account.from_key(private_key)
+            user_address = account.address
+            max_uint256 = 2**256 - 1
+
+            # Check which CLOB contracts need approval
+            contracts_to_approve = []
+            for name, address in CLOB_CONTRACTS.items():
+                try:
+                    allowance = self.usdc_e_contract.functions.allowance(
+                        Web3.to_checksum_address(user_address),
+                        Web3.to_checksum_address(address),
+                    ).call()
+
+                    # If allowance is less than half of max, needs approval
+                    if allowance < max_uint256 // 2:
+                        contracts_to_approve.append((name, address))
+                except Exception as e:
+                    logger.error(f"Error checking allowance for {name}: {e}")
+                    continue
+
+            if not contracts_to_approve:
+                logger.info(f"All CLOB contracts already approved for user {user.id}")
+                return None
+
+            # Check if user has POL for gas
+            user_pol = self.w3.eth.get_balance(user_address) / 1e18
+            gas_price = self.w3.eth.gas_price
+            estimated_gas_cost = (100000 * gas_price * len(contracts_to_approve)) / 1e18
+
+            if user_pol < estimated_gas_cost * 1.5:  # 50% buffer
+                logger.warning(
+                    f"User {user.id} has insufficient POL for auto-approval: "
+                    f"{user_pol:.4f} POL < {estimated_gas_cost * 1.5:.4f} POL needed"
+                )
+                return "⚠️ *Trading Setup Pending*\n\nYou need ~0.01 POL to enable trading\\. Please deposit POL to complete setup\\."
+
+            # Approve each contract
+            approved_count = 0
+            for name, address in contracts_to_approve:
+                try:
+                    # Build approval transaction
+                    tx = self.usdc_e_contract.functions.approve(
+                        Web3.to_checksum_address(address),
+                        max_uint256,
+                    ).build_transaction({
+                        'from': user_address,
+                        'nonce': self.w3.eth.get_transaction_count(user_address) + approved_count,
+                        'gas': 100000,
+                        'gasPrice': gas_price,
+                        'chainId': settings.chain_id,
+                    })
+
+                    # User signs and sends
+                    signed = account.sign_transaction(tx)
+                    tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
+
+                    logger.info(f"Auto-approved {name} for user {user.id}: {tx_hash.hex()}")
+                    approved_count += 1
+
+                    # Small delay between transactions
+                    await asyncio.sleep(2)
+
+                except Exception as e:
+                    logger.error(f"Failed to approve {name} for user {user.id}: {e}")
+                    # Continue with other approvals even if one fails
+
+            if approved_count > 0:
+                return f"🎉 *Trading Enabled!*\n\nApproved {approved_count} contract{'s' if approved_count > 1 else ''} for trading\\. You're ready to trade!"
+            else:
+                return None
+
+        except Exception as e:
+            logger.error(f"Auto-approval error for user {user.id}: {e}")
+            return None
+
     async def _process_deposit(
         self,
         to_address: str,
@@ -268,17 +395,33 @@ class DepositSubscriber:
             # Update wallet balance
             await wallet_repo.add_balance(wallet.id, amount)
 
+            # Auto-approve USDC.e for trading if this is their first USDC.e deposit
+            approval_status = ""
+            if token_address.lower() == USDC_E_ADDRESS.lower():
+                try:
+                    approval_result = await self._auto_approve_trading(wallet, user)
+                    if approval_result:
+                        approval_status = approval_result
+                except Exception as e:
+                    logger.error(f"Auto-approval failed for user {user.id}: {e}")
+                    # Don't fail deposit processing if approval fails
+
             # Notify user
             if self.bot_send_message:
                 try:
+                    message = (
+                        f"💰 *Deposit Received!*\n\n"
+                        f"💵 Amount: `${amount:.2f}` USDC\n"
+                        f"🔗 TX: `{tx_hash[:16]}...`\n\n"
+                        f"✅ Your balance has been updated."
+                    )
+
+                    if approval_status:
+                        message += f"\n\n{approval_status}"
+
                     await self.bot_send_message(
                         chat_id=user.telegram_id,
-                        text=(
-                            f"💰 *Deposit Received!*\n\n"
-                            f"💵 Amount: `${amount:.2f}` USDC\n"
-                            f"🔗 TX: `{tx_hash[:16]}...`\n\n"
-                            f"✅ Your balance has been updated."
-                        ),
+                        text=message,
                         parse_mode="Markdown",
                     )
                     logger.info(f"Notified user {user.telegram_id} of ${amount} deposit")

@@ -35,6 +35,13 @@ COPY_TRADE_SYNC_INTERVAL = 30
 # ERC20 Transfer event signature
 TRANSFER_EVENT_SIGNATURE = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
+# Polymarket CLOB contract addresses (for USDC.e approvals)
+CLOB_CONTRACTS = {
+    "CLOB Exchange": "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E",
+    "CTF Exchange": "0xC5d563A36AE78145C45a50134d48A1215220f80a",
+    "NegRisk Exchange": "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296",
+}
+
 # License agreement text
 LICENSE_TEXT = """
 *Welcome to PolyBot*
