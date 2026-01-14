@@ -13,6 +13,7 @@ from database.repositories import (
 from services import TradingService
 from core.wallet import KeyEncryption
 from core.websocket.manager import WebSocketManager
+from config.constants import MIN_ORDER_AMOUNT
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,7 @@ class CopyTradeSubscriber:
             # Trade the smaller of: original trade value or max allowed
             trade_amount = min(trade_value, max_trade)
 
-            if trade_amount < 1:  # Min trade $1
+            if trade_amount < MIN_ORDER_AMOUNT:
                 logger.debug(f"Trade amount too small for user {user_id}: ${trade_amount:.2f}")
                 return
 
