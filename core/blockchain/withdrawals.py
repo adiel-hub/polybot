@@ -8,7 +8,7 @@ from web3 import Web3
 from eth_account import Account
 
 from config import settings
-from config.constants import USDC_ADDRESS, USDC_DECIMALS, MIN_WITHDRAWAL, MAX_WITHDRAWAL
+from config.constants import USDC_E_ADDRESS, USDC_DECIMALS, MIN_WITHDRAWAL, MAX_WITHDRAWAL
 
 logger = logging.getLogger(__name__)
 
@@ -93,9 +93,9 @@ class WithdrawalManager:
 
         self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
 
-        # USDC contract
+        # USDC.e contract (Polymarket uses bridged USDC.e)
         self.usdc_contract = self.w3.eth.contract(
-            address=Web3.to_checksum_address(USDC_ADDRESS),
+            address=Web3.to_checksum_address(USDC_E_ADDRESS),
             abi=ERC20_ABI,
         )
 

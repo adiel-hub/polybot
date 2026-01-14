@@ -126,7 +126,19 @@ async def handle_wallet_callback(
 
     elif callback_data == "wallet_withdraw":
         wallet = await user_service.get_wallet(user.id)
-        if not wallet or wallet.usdc_balance < 1.0:
+        if not wallet:
+            await query.edit_message_text(
+                "❌ Wallet not found.",
+                reply_markup=get_back_keyboard("menu_wallet"),
+            )
+            return ConversationState.WALLET_MENU
+
+        # Get real-time balance from blockchain
+        from core.blockchain.balance import get_balance_service
+        balance_service = get_balance_service()
+        usdc_balance = balance_service.get_balance(wallet.address)
+
+        if usdc_balance < 1.0:
             await query.edit_message_text(
                 "💸 *Withdraw*\n\n"
                 "⚠️ Insufficient balance. Minimum withdrawal is $1.00.",
@@ -135,11 +147,11 @@ async def handle_wallet_callback(
             )
             return ConversationState.WALLET_MENU
 
-        context.user_data["withdraw_balance"] = wallet.usdc_balance
+        context.user_data["withdraw_balance"] = usdc_balance
 
         await query.edit_message_text(
             f"💸 *Withdraw USDC*\n\n"
-            f"💰 Available balance: `${wallet.usdc_balance:.2f}`\n"
+            f"💰 Available balance: `${usdc_balance:.2f}`\n"
             f"📍 Minimum withdrawal: $1.00\n\n"
             f"✏️ Enter the amount to withdraw:",
             reply_markup=get_back_keyboard("menu_wallet"),
@@ -335,13 +347,7 @@ async def confirm_withdraw(
             )
 
         if result.success:
-            # Update balance in database
-            wallet = await user_service.get_wallet(user.id)
-            if wallet:
-                from database.repositories import WalletRepository
-                wallet_repo = WalletRepository(context.bot_data["db"])
-                await wallet_repo.subtract_balance(wallet.id, amount)
-
+            # Balance is automatically updated on blockchain, no DB update needed
             await query.edit_message_text(
                 f"✅ *Withdrawal Submitted!*\n\n"
                 f"💵 Amount: `${amount:.2f}` USDC\n"

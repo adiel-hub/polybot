@@ -137,8 +137,16 @@ class TradingService:
         if not wallet:
             return {"success": False, "error": "Wallet not found"}
 
-        if wallet.usdc_balance < amount and order_type == "MARKET":
-            return {"success": False, "error": "Insufficient balance"}
+        # Get real-time balance from blockchain
+        from core.blockchain.balance import get_balance_service
+        balance_service = get_balance_service()
+        current_balance = balance_service.get_balance(wallet.address)
+
+        if current_balance < amount and order_type == "MARKET":
+            return {
+                "success": False,
+                "error": f"Insufficient balance: ${current_balance:.2f} < ${amount:.2f}"
+            }
 
         # Create order record
         db_order = await self.order_repo.create(

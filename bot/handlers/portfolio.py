@@ -33,8 +33,12 @@ async def show_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     positions = await trading_service.get_positions(db_user.id)
     wallet = await user_service.get_wallet(user.id)
 
+    # Get real-time balance from blockchain
+    from core.blockchain.balance import get_balance_service
+    balance_service = get_balance_service()
+    balance = balance_service.get_balance(wallet.address) if wallet else 0
+
     if not positions:
-        balance = wallet.usdc_balance if wallet else 0
         text = (
             "📊 *Portfolio*\n\n"
             "📭 You don't have any positions yet.\n\n"
@@ -72,7 +76,7 @@ async def show_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         f"📊 *Portfolio*\n\n"
         f"💰 Total Value: `${total_value:.2f}`\n"
         f"{pnl_emoji} Unrealized P&L: `{pnl_sign}${total_pnl:.2f}`\n"
-        f"💵 Tradable Balance: `${wallet.usdc_balance:.2f if wallet else 0:.2f}`\n\n"
+        f"💵 Tradable Balance: `${balance:.2f}`\n\n"
         f"🎯 *Positions ({len(positions)})*\n\n"
     )
 
