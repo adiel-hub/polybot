@@ -268,15 +268,79 @@ async def confirm_withdraw(
         if not private_key:
             raise Exception("Wallet not found")
 
-        # Execute withdrawal
+        # Get wallet address
+        wallet = await user_service.get_wallet(user.id)
+        if not wallet:
+            raise Exception("Wallet not found")
+
+        # Execute sponsored withdrawal (gas sponsor pays fees)
         from core.blockchain import WithdrawalManager
 
         withdrawal_mgr = WithdrawalManager()
-        result = await withdrawal_mgr.withdraw(
-            from_private_key=private_key,
+
+        # First attempt withdrawal
+        result = await withdrawal_mgr.withdraw_sponsored(
+            user_address=wallet.address,
             to_address=to_address,
             amount=amount,
         )
+
+        # If approval needed, approve first then retry
+        if not result.success and "approval" in result.error.lower():
+            logger.info("Gas sponsor not approved, approving now...")
+            await query.edit_message_text("⏳ Setting up withdrawal permissions...")
+
+            # First, check if user has POL for approval transaction
+            user_pol = withdrawal_mgr.w3.eth.get_balance(wallet.address) / 1e18
+            if user_pol < 0.01:
+                logger.info(f"User needs POL for approval, sponsoring gas")
+                gas_result = await withdrawal_mgr.sponsor_gas(wallet.address, 0.02)
+                if gas_result.success and gas_result.tx_hash != "already_approved":
+                    # Wait for gas to arrive
+                    import asyncio
+                    for i in range(30):
+                        await asyncio.sleep(2)
+                        try:
+                            receipt = withdrawal_mgr.w3.eth.get_transaction_receipt(gas_result.tx_hash)
+                            if receipt and receipt.status == 1:
+                                logger.info(f"Gas transfer confirmed")
+                                break
+                        except Exception:
+                            pass
+
+            # Approve gas sponsor
+            approval_result = await withdrawal_mgr.approve_gas_sponsor(private_key)
+
+            if not approval_result.success:
+                await query.edit_message_text(
+                    f"❌ *Withdrawal Setup Failed*\n\n"
+                    f"⚠️ Could not approve gas sponsor: {approval_result.error}\n\n"
+                    f"🔄 Please try again later.",
+                    parse_mode="Markdown",
+                )
+                return ConversationState.MAIN_MENU
+
+            # Wait for approval to be mined if it's a new approval
+            if approval_result.tx_hash != "already_approved":
+                logger.info(f"Waiting for approval tx: {approval_result.tx_hash}")
+                import asyncio
+                for i in range(30):
+                    await asyncio.sleep(2)
+                    try:
+                        receipt = withdrawal_mgr.w3.eth.get_transaction_receipt(approval_result.tx_hash)
+                        if receipt and receipt.status == 1:
+                            logger.info(f"Approval confirmed in block {receipt.blockNumber}")
+                            break
+                    except Exception:
+                        pass
+
+            # Retry withdrawal
+            await query.edit_message_text("⏳ Processing withdrawal...")
+            result = await withdrawal_mgr.withdraw_sponsored(
+                user_address=wallet.address,
+                to_address=to_address,
+                amount=amount,
+            )
 
         if result.success:
             # Update balance in database
