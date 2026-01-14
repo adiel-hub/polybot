@@ -356,6 +356,7 @@ async def handle_search_input(
 
                 for i, m in enumerate(markets[:5], 1):
                     yes_cents = int(m.yes_price * 100)
+                    no_cents = int(m.no_price * 100)
 
                     # Build trade deep link with short ID
                     short_id = generate_short_id(m.condition_id)
@@ -375,7 +376,8 @@ async def handle_search_input(
 
                     text += (
                         f"{i}) {m.question[:60]}{'...' if len(m.question) > 60 else ''}\n"
-                        f"  ├ ✅ YES <code>{yes_cents}c</code> │ 📊 Vol <code>${m.volume_24h:,.0f}</code>\n"
+                        f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
+                        f"  ├ 📊 Vol <code>${m.volume_24h:,.0f}</code> │ 💧 Liq <code>${m.liquidity:,.0f}</code>\n"
                         f"  └ {trade_html}{polymarket_html}\n\n"
                     )
 
@@ -552,6 +554,7 @@ async def handle_search_input(
 
     for i, market in enumerate(markets, 1):
         yes_cents = int(market.yes_price * 100)
+        no_cents = int(market.no_price * 100)
 
         # Build trade deep link with short ID
         short_id = generate_short_id(market.condition_id)
@@ -571,7 +574,8 @@ async def handle_search_input(
 
         text += (
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
-            f"  ├ ✅ YES <code>{yes_cents}c</code> │ 📊 Vol <code>${market.volume_24h:,.0f}</code>\n"
+            f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
+            f"  ├ 📊 Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
             f"  └ {trade_html}{polymarket_html}\n\n"
         )
 
