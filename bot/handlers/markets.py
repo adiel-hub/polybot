@@ -156,7 +156,7 @@ async def handle_browse_callback(
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
             f"  ├ ✅ YES `{yes_cents}c` │ ❌ NO `{no_cents}c`\n"
             f"  ├ 📊 24h Vol `${market.volume_24h:,.0f}` │ 💧 Liq `${market.liquidity:,.0f}`\n"
-            f"  └ [📈 Trade]({trade_link}){polymarket_link}\n\n"
+            f"  └ 📈 [Trade]({trade_link}){polymarket_link}\n\n"
         )
 
     # Pagination navigation
@@ -354,7 +354,7 @@ async def handle_search_input(
                     text += (
                         f"{i}) {m.question[:60]}{'...' if len(m.question) > 60 else ''}\n"
                         f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${m.volume_24h:,.0f}`\n"
-                        f"  └ [📈 Trade]({trade_link}){polymarket_link}\n\n"
+                        f"  └ 📈 [Trade]({trade_link}){polymarket_link}\n\n"
                     )
 
                 keyboard = []
@@ -541,7 +541,7 @@ async def handle_search_input(
         text += (
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
             f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${market.volume_24h:,.0f}`\n"
-            f"  └ [📈 Trade]({trade_link}){polymarket_link}\n\n"
+            f"  └ 📈 [Trade]({trade_link}){polymarket_link}\n\n"
         )
 
     keyboard = []
