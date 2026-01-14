@@ -21,27 +21,37 @@ async def show_referral_menu(
     if query:
         await query.answer()
 
-    user = update.effective_user
-    logger.info(f"[REFERRAL MENU] User {user.id} (@{user.username}) viewing referral menu")
+    telegram_user = update.effective_user
+    logger.info(f"[REFERRAL MENU] Telegram user {telegram_user.id} (@{telegram_user.username}) viewing referral menu")
 
     referral_service = context.bot_data["referral_service"]
     user_service = context.bot_data["user_service"]
 
+    # Get database user from telegram ID
+    db_user = await user_service.get_user(telegram_user.id)
+    if not db_user:
+        logger.error(f"[REFERRAL MENU] Database user not found for telegram_id={telegram_user.id}")
+        await query.answer("❌ User not found. Please contact support.", show_alert=True)
+        return ConversationState.REFERRAL_MENU
+
+    user_id = db_user.id
+    logger.info(f"[REFERRAL MENU] Found database user_id={user_id} for telegram_id={telegram_user.id}")
+
     # Ensure user has a referral code (generate if missing)
-    stats = await referral_service.get_referral_stats(user.id)
-    logger.info(f"[REFERRAL MENU] User {user.id} stats: {stats}")
+    stats = await referral_service.get_referral_stats(user_id)
+    logger.info(f"[REFERRAL MENU] User {user_id} stats: {stats}")
 
     if not stats['referral_code']:
-        logger.warning(f"[REFERRAL MENU] User {user.id} has no referral code, generating one...")
-        new_code = await user_service.generate_referral_code_for_user(user.id)
-        logger.info(f"[REFERRAL MENU] Generated code '{new_code}' for user {user.id}")
-        stats = await referral_service.get_referral_stats(user.id)
+        logger.warning(f"[REFERRAL MENU] User {user_id} has no referral code, generating one...")
+        new_code = await user_service.generate_referral_code_for_user(user_id)
+        logger.info(f"[REFERRAL MENU] Generated code '{new_code}' for user {user_id}")
+        stats = await referral_service.get_referral_stats(user_id)
         logger.info(f"[REFERRAL MENU] Updated stats after generation: {stats}")
 
     # Get referral link
     bot_username = context.bot.username
     logger.info(f"[REFERRAL MENU] Bot username: {bot_username}")
-    referral_link = await referral_service.get_referral_link(user.id, bot_username)
+    referral_link = await referral_service.get_referral_link(user_id, bot_username)
     logger.info(f"[REFERRAL MENU] Generated referral link: '{referral_link}'")
 
     # Build referral menu message
@@ -188,18 +198,26 @@ async def handle_create_qr(
     query = update.callback_query
     await query.answer()
 
-    user = update.effective_user
+    telegram_user = update.effective_user
     referral_service = context.bot_data["referral_service"]
     user_service = context.bot_data["user_service"]
 
+    # Get database user from telegram ID
+    db_user = await user_service.get_user(telegram_user.id)
+    if not db_user:
+        await query.answer("❌ User not found. Please contact support.", show_alert=True)
+        return ConversationState.REFERRAL_QR
+
+    user_id = db_user.id
+
     # Ensure user has a referral code (generate if missing)
-    stats = await referral_service.get_referral_stats(user.id)
+    stats = await referral_service.get_referral_stats(user_id)
     if not stats['referral_code']:
-        await user_service.generate_referral_code_for_user(user.id)
+        await user_service.generate_referral_code_for_user(user_id)
 
     # Get referral link
     bot_username = context.bot.username
-    referral_link = await referral_service.get_referral_link(user.id, bot_username)
+    referral_link = await referral_service.get_referral_link(user_id, bot_username)
 
     # Generate QR code
     qr = qrcode.QRCode(
