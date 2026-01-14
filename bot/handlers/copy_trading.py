@@ -423,38 +423,40 @@ async def view_trader_from_deeplink(
     try:
         profile = await leaderboard_service.get_trader_profile(trader_address)
 
-        if not profile:
-            await update.message.reply_text(
-                "❌ Trader not found.\n\n"
-                "The trader may have been removed or the link is invalid.",
-                parse_mode="Markdown",
+        if profile:
+            # Full profile found on leaderboard
+            name = profile.get("name", "Anonymous")
+            pnl = profile.get("pnl", 0)
+            volume = profile.get("volume", 0)
+            rank = profile.get("rank", "N/A")
+            x_username = profile.get("x_username", "")
+            verified = profile.get("verified", False)
+
+            pnl_emoji = "📈" if pnl >= 0 else "📉"
+            verified_badge = "✅ Verified" if verified else ""
+
+            text = (
+                f"👤 *Trader Profile*\n\n"
+                f"*{name}* {verified_badge}\n\n"
+                f"🏆 Rank: `#{rank}`\n"
+                f"{pnl_emoji} P&L: `${pnl:,.2f}`\n"
+                f"💹 Volume: `${volume:,.0f}`\n"
+                f"🔑 Address: `{trader_address[:10]}...{trader_address[-8:]}`\n"
             )
-            from bot.handlers.menu import show_main_menu
-            return await show_main_menu(update, context, send_new=True)
 
-        name = profile.get("name", "Anonymous")
-        pnl = profile.get("pnl", 0)
-        volume = profile.get("volume", 0)
-        rank = profile.get("rank", "N/A")
-        x_username = profile.get("x_username", "")
-        verified = profile.get("verified", False)
+            if x_username:
+                text += f"🐦 Twitter: @{x_username}\n"
 
-        pnl_emoji = "📈" if pnl >= 0 else "📉"
-        verified_badge = "✅ Verified" if verified else ""
-
-        text = (
-            f"👤 *Trader Profile*\n\n"
-            f"*{name}* {verified_badge}\n\n"
-            f"🏆 Rank: `#{rank}`\n"
-            f"{pnl_emoji} P&L: `${pnl:,.2f}`\n"
-            f"💹 Volume: `${volume:,.0f}`\n"
-            f"🔑 Address: `{trader_address[:10]}...{trader_address[-8:]}`\n"
-        )
-
-        if x_username:
-            text += f"🐦 Twitter: @{x_username}\n"
-
-        text += "\n💡 _Tap 'Copy' to start copying this trader's trades._"
+            text += "\n💡 _Tap 'Copy' to start copying this trader's trades._"
+        else:
+            # Trader not on leaderboard - show basic info with address
+            text = (
+                f"👤 *Trader Profile*\n\n"
+                f"🔑 Address: `{trader_address[:10]}...{trader_address[-8:]}`\n\n"
+                f"ℹ️ _This trader is not currently on the leaderboard._\n"
+                f"_Stats may be unavailable, but you can still copy their trades._\n\n"
+                f"💡 _Tap 'Copy' to start copying this trader's trades._"
+            )
 
         keyboard = [
             [InlineKeyboardButton("👥 Copy This Trader", callback_data=f"copy_trader_{trader_address}")],
