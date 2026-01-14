@@ -243,8 +243,7 @@ async def handle_position_callback(
     # Check if stop loss exists
     from database.repositories.stop_loss_repo import StopLossRepository
     stop_loss_repo = StopLossRepository(context.bot_data["db"])
-    stop_losses = await stop_loss_repo.get_by_position_id(position_id)
-    active_stop_loss = next((sl for sl in stop_losses if sl.is_active), None)
+    active_stop_loss = await stop_loss_repo.get_active_for_position(position_id)
 
     if active_stop_loss:
         message_lines.append(f"✅ Stop Loss: `${active_stop_loss.trigger_price:.4f}` ({active_stop_loss.trigger_price * 100:.1f}c)")
