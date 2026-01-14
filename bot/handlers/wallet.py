@@ -313,7 +313,18 @@ async def confirm_withdraw(
 
             # Wait for approval to be mined if it's a new approval
             if approval_result.tx_hash != "already_approved":
-                await withdrawal_mgr.wait_for_transaction(approval_result.tx_hash, timeout=60)
+                approval_confirmed = await withdrawal_mgr.wait_for_transaction(
+                    approval_result.tx_hash,
+                    timeout=60
+                )
+                if not approval_confirmed:
+                    await query.edit_message_text(
+                        f"❌ *Withdrawal Setup Failed*\n\n"
+                        f"⚠️ Approval transaction timed out or failed.\n\n"
+                        f"🔄 Please try again later.",
+                        parse_mode="Markdown",
+                    )
+                    return ConversationState.MAIN_MENU
 
             # Retry withdrawal
             await query.edit_message_text("⏳ Processing withdrawal...")
