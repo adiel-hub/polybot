@@ -60,11 +60,30 @@ async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
         return ConversationState.ORDERS_LIST
 
-    # Build orders text
-    text = f"📋 *Orders*\n\n📊 Open Orders: `{len(open_orders)}`\n\n"
+    # Build orders text with summary
+    message_lines = [
+        "📋 *Your Orders*",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "📊 *Summary*",
+        "",
+        f"✅ Filled: `{sum(1 for o in orders if o.status.value == 'FILLED')}`",
+        f"📖 Open: `{len(open_orders)}`",
+        f"❌ Failed: `{sum(1 for o in orders if o.status.value == 'FAILED')}`",
+        f"🚫 Cancelled: `{sum(1 for o in orders if o.status.value == 'CANCELLED')}`",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "🗂️ *Recent Orders*",
+        "",
+        "_Click an order to view details_",
+        "",
+    ]
+
+    text = "\n".join(message_lines)
 
     keyboard = []
 
+    # Create buttons for each order
     for i, order in enumerate(orders[:10], 1):
         # Status emoji
         status_emoji = {
@@ -76,26 +95,21 @@ async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             "FAILED": "❌",
         }.get(order.status.value, "❓")
 
+        # Create button label
         question = order.market_question or "Unknown Market"
+        short_question = question[:25] + "..." if len(question) > 25 else question
 
-        text += (
-            f"{i}. {status_emoji} {question[:35]}{'...' if len(question) > 35 else ''}\n"
-            f"   {order.side.value} {order.outcome.value if order.outcome else ''} "
-            f"| {order.order_type.value}\n"
-            f"   Size: {order.size:.2f} | "
-            f"Price: {order.price * 100:.0f}c" if order.price else f"   Size: {order.size:.2f}"
-        )
-        text += f"\n   Status: {order.status.value}\n\n"
+        button_label = f"{status_emoji} {short_question}"
 
-        # Add cancel button for open orders
-        if order.is_open:
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"🚫 {i}. Cancel",
-                    callback_data=f"cancel_order_{order.id}",
-                )
-            ])
+        # Add button for order details
+        keyboard.append([
+            InlineKeyboardButton(
+                button_label,
+                callback_data=f"order_view_{order.id}",
+            )
+        ])
 
+    # Navigation buttons
     keyboard.append([
         InlineKeyboardButton("🔄 Refresh", callback_data="menu_orders"),
         InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
@@ -113,6 +127,131 @@ async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown",
         )
+
+    return ConversationState.ORDERS_LIST
+
+
+async def show_order_details(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Show detailed view of a specific order."""
+    query = update.callback_query
+    await query.answer()
+
+    callback_data = query.data
+    order_id = int(callback_data.replace("order_view_", ""))
+
+    user = update.effective_user
+    user_service = context.bot_data["user_service"]
+
+    db_user = await user_service.get_user(user.id)
+    if not db_user:
+        await query.edit_message_text("❌ User not found.")
+        return ConversationState.MAIN_MENU
+
+    # Get order details
+    from database.repositories.order_repo import OrderRepository
+    order_repo = OrderRepository(context.bot_data["db"])
+    order = await order_repo.get_by_id(order_id)
+
+    if not order or order.user_id != db_user.id:
+        await query.edit_message_text("❌ Order not found.")
+        return await show_orders(update, context)
+
+    # Build detailed order view
+    message_lines = [
+        "📋 *Order Details*",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "🎯 *Market*",
+        "",
+    ]
+
+    market_question = order.market_question or "Unknown Market"
+    if len(market_question) > 60:
+        market_question = market_question[:60] + "..."
+    message_lines.append(f"_{market_question}_")
+    message_lines.append("")
+
+    # Status
+    status_emoji = {
+        "PENDING": "⏳",
+        "OPEN": "📖",
+        "PARTIALLY_FILLED": "📊",
+        "FILLED": "✅",
+        "CANCELLED": "🚫",
+        "FAILED": "❌",
+    }.get(order.status.value, "❓")
+
+    message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    message_lines.append("📊 *Order Info*")
+    message_lines.append("")
+    message_lines.append(f"🔄 Type: *{order.order_type.value}*")
+    message_lines.append(f"📈 Side: *{order.side.value}*")
+    message_lines.append(f"🎯 Outcome: *{order.outcome.value if order.outcome else 'N/A'}*")
+    message_lines.append(f"📦 Size: `{order.size:.4f}`")
+
+    if order.price:
+        message_lines.append(f"💰 Price: `${order.price:.4f}` ({order.price * 100:.1f}c)")
+
+    message_lines.append("")
+    message_lines.append(f"{status_emoji} Status: *{order.status.value}*")
+
+    # Transaction info
+    if order.polymarket_order_id:
+        message_lines.append("")
+        message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        message_lines.append("🔗 *Transaction*")
+        message_lines.append("")
+        short_id = order.polymarket_order_id[:16] + "..." if len(order.polymarket_order_id) > 16 else order.polymarket_order_id
+        message_lines.append(f"📝 Order ID: `{short_id}`")
+
+    # Timestamps
+    message_lines.append("")
+    message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    message_lines.append("🕒 *Timestamps*")
+    message_lines.append("")
+
+    from datetime import datetime
+    created_time = datetime.fromisoformat(order.created_at).strftime("%Y-%m-%d %H:%M:%S")
+    message_lines.append(f"📅 Created: {created_time}")
+
+    if order.updated_at:
+        updated_time = datetime.fromisoformat(order.updated_at).strftime("%Y-%m-%d %H:%M:%S")
+        message_lines.append(f"🔄 Updated: {updated_time}")
+
+    # Error message if failed
+    if order.status.value == "FAILED" and order.error_message:
+        message_lines.append("")
+        message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        message_lines.append("⚠️ *Error*")
+        message_lines.append("")
+        error_msg = order.error_message[:100] + "..." if len(order.error_message) > 100 else order.error_message
+        message_lines.append(f"`{error_msg}`")
+
+    text = "\n".join(message_lines)
+
+    # Action buttons
+    keyboard = []
+
+    # Add cancel button for open orders
+    if order.is_open:
+        keyboard.append([
+            InlineKeyboardButton("🚫 Cancel Order", callback_data=f"cancel_order_{order.id}")
+        ])
+
+    # Navigation
+    keyboard.append([
+        InlineKeyboardButton("🔙 Back to Orders", callback_data="menu_orders"),
+        InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
+    ])
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
 
     return ConversationState.ORDERS_LIST
 

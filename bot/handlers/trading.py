@@ -216,11 +216,100 @@ async def confirm_order(
         )
 
         if result.get("success"):
+            # Build enhanced order confirmation message
+            message_lines = [
+                "✅ *Trade Executed Successfully!*",
+                "",
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                "📋 *Order Details*",
+                "",
+            ]
+
+            # Market info
+            market_question = market.get("question", "Unknown Market")
+            if len(market_question) > 60:
+                market_question = market_question[:60] + "..."
+            message_lines.append(f"🎯 Market: _{market_question}_")
+            message_lines.append(f"📊 Outcome: *{outcome}*")
+            message_lines.append("")
+
+            # Order details
+            message_lines.append(f"💵 Amount: `${amount:.2f}` USDC")
+            message_lines.append(f"📈 Type: {order_type.upper()}")
+
+            if limit_price:
+                message_lines.append(f"💰 Price: `${limit_price:.4f}`")
+
+            message_lines.append("")
+            message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            # Transaction info
+            message_lines.append("🔗 *Transaction Info*")
+            message_lines.append("")
+            message_lines.append(f"📝 Order ID: `{result.get('order_id', 'N/A')[:16]}...`")
+            message_lines.append(f"✨ Status: *{result.get('status', 'PENDING')}*")
+
+            # If filled, show position details
+            if result.get('status') == 'FILLED':
+                message_lines.append("")
+                message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                message_lines.append("📊 *Position Created*")
+                message_lines.append("")
+
+                # Try to get position details
+                try:
+                    from database.repositories.position_repo import PositionRepository
+                    position_repo = PositionRepository(context.bot_data["db"])
+                    positions = await position_repo.get_user_positions(db_user.id)
+
+                    # Find the position for this market and outcome
+                    matching_position = None
+                    for pos in positions:
+                        if pos.token_id == token_id and pos.outcome == outcome:
+                            matching_position = pos
+                            break
+
+                    if matching_position:
+                        shares = matching_position.size
+                        entry_price = matching_position.average_entry_price
+                        position_value = shares * entry_price
+
+                        message_lines.append(f"📦 Shares: `{shares:.4f}`")
+                        message_lines.append(f"💰 Entry Price: `${entry_price:.4f}`")
+                        message_lines.append(f"💎 Position Value: `${position_value:.2f}`")
+
+                        # Calculate potential profit (to $1.00 payout)
+                        if entry_price > 0:
+                            potential_profit = (1.0 - entry_price) * shares
+                            roi = (potential_profit / amount) * 100 if amount > 0 else 0
+                            message_lines.append(f"🎯 Max Profit: `${potential_profit:.2f}` ({roi:.1f}%)")
+                    else:
+                        message_lines.append(f"📦 Shares: `{amount / limit_price if limit_price else 'calculating...'}`")
+                except Exception as e:
+                    logger.error(f"Failed to fetch position details: {e}")
+                    pass
+
+                message_lines.append("")
+                message_lines.append("🎉 _Your position is now active!_")
+            else:
+                message_lines.append("")
+                message_lines.append("⏳ _Order pending execution..._")
+
+            message_lines.append("")
+            message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            # Get updated balance
+            try:
+                wallet = await context.bot_data["wallet_repo"].get_by_user_id(db_user.id)
+                from core.blockchain.balance import get_balance_service
+                balance_service = get_balance_service()
+                new_balance = balance_service.get_balance(wallet.address)
+                message_lines.append(f"💰 Remaining Balance: `${new_balance:.2f}` USDC")
+            except Exception as e:
+                logger.error(f"Failed to get balance: {e}")
+
             await query.edit_message_text(
-                f"✅ *Order Submitted!*\n\n"
-                f"🔗 Order ID: `{result.get('order_id', 'N/A')}`\n"
-                f"📊 Status: {result.get('status', 'PENDING')}\n\n"
-                f"🎉 Your order has been placed successfully.",
+                "\n".join(message_lines),
                 parse_mode="Markdown",
             )
         else:
@@ -484,12 +573,83 @@ async def confirm_sell(
         )
 
         if result.get("success"):
+            # Build enhanced sell confirmation message
+            message_lines = [
+                "✅ *Position Closed Successfully!*",
+                "",
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                "📋 *Sale Details*",
+                "",
+            ]
+
+            # Market info
+            market_question = sell_position.get('market_question', 'Unknown Market')
+            if len(market_question) > 60:
+                market_question = market_question[:60] + "..."
+            message_lines.append(f"🎯 Market: _{market_question}_")
+            message_lines.append(f"📊 Outcome: *{sell_position['outcome']}*")
+            message_lines.append("")
+
+            # Sale details
+            sale_price = sell_position['current_price']
+            sale_value = shares_to_sell * sale_price
+
+            message_lines.append(f"📦 Shares Sold: `{shares_to_sell:.4f}`")
+            message_lines.append(f"💰 Sale Price: `${sale_price:.4f}`")
+            message_lines.append(f"💵 Total Value: `${sale_value:.2f}` USDC")
+
+            message_lines.append("")
+            message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            # P&L calculation
+            try:
+                entry_price = sell_position.get('average_entry_price', 0)
+                if entry_price > 0:
+                    cost_basis = shares_to_sell * entry_price
+                    profit_loss = sale_value - cost_basis
+                    roi = (profit_loss / cost_basis) * 100 if cost_basis > 0 else 0
+
+                    message_lines.append("💹 *Profit/Loss*")
+                    message_lines.append("")
+                    message_lines.append(f"📥 Entry Price: `${entry_price:.4f}`")
+                    message_lines.append(f"📤 Exit Price: `${sale_price:.4f}`")
+                    message_lines.append(f"💰 Cost Basis: `${cost_basis:.2f}`")
+
+                    if profit_loss >= 0:
+                        message_lines.append(f"🟢 P&L: `+${profit_loss:.2f}` (+{roi:.1f}%)")
+                    else:
+                        message_lines.append(f"🔴 P&L: `-${abs(profit_loss):.2f}` ({roi:.1f}%)")
+
+                    message_lines.append("")
+                    message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            except Exception as e:
+                logger.error(f"Failed to calculate P&L: {e}")
+
+            # Transaction info
+            message_lines.append("🔗 *Transaction Info*")
+            message_lines.append("")
+            message_lines.append(f"📝 Order ID: `{result.get('order_id', 'N/A')[:16]}...`")
+            message_lines.append(f"✨ Status: *{result.get('status', 'FILLED')}*")
+
+            message_lines.append("")
+            message_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            # Get updated balance
+            try:
+                wallet = await context.bot_data["wallet_repo"].get_by_user_id(db_user.id)
+                from core.blockchain.balance import get_balance_service
+                balance_service = get_balance_service()
+                new_balance = balance_service.get_balance(wallet.address)
+                message_lines.append(f"💰 New Balance: `${new_balance:.2f}` USDC")
+                message_lines.append("")
+                message_lines.append("🎉 _Funds added to your wallet!_")
+            except Exception as e:
+                logger.error(f"Failed to get balance: {e}")
+                message_lines.append("")
+                message_lines.append("🎉 _Your position has been closed!_")
+
             await query.edit_message_text(
-                f"✅ *Sell Order Submitted!*\n\n"
-                f"🔗 Order ID: `{result.get('order_id', 'N/A')}`\n"
-                f"📊 Shares Sold: `{shares_to_sell:.2f}`\n"
-                f"💵 Est. Value: `${shares_to_sell * sell_position['current_price']:.2f}`\n\n"
-                f"🎉 Your sell order has been placed successfully.",
+                "\n".join(message_lines),
                 parse_mode="Markdown",
             )
         else:

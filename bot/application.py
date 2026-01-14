@@ -43,7 +43,7 @@ from bot.handlers.wallet import (
     confirm_withdraw,
 )
 from bot.handlers.portfolio import show_portfolio, handle_position_callback
-from bot.handlers.orders import show_orders, handle_cancel_order
+from bot.handlers.orders import show_orders, show_order_details, handle_cancel_order
 from bot.handlers.copy_trading import (
     show_copy_trading,
     handle_copy_callback,
@@ -199,6 +199,7 @@ async def create_application(db: Database) -> Application:
 
             # Orders
             ConversationState.ORDERS_LIST: [
+                CallbackQueryHandler(show_order_details, pattern="^order_view_"),
                 CallbackQueryHandler(handle_cancel_order, pattern="^cancel_order_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],

@@ -247,6 +247,11 @@ class DepositSubscriber:
             amount_wei = int(data_hex, 16)
             amount = amount_wei / (10 ** USDC_DECIMALS)
 
+            # Ignore zero-value transfers (these are often approval transactions)
+            if amount <= 0:
+                logger.debug(f"Ignoring zero-value transfer to {to_address[:10]}...")
+                return
+
             tx_hash = event.get("transactionHash", "")
             block_hex = event.get("blockNumber", "0x0")
             block_number = int(block_hex, 16)
