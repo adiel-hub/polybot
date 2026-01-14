@@ -16,33 +16,43 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     user = update.effective_user
     user_service = context.bot_data["user_service"]
 
+    logger.info(f"=== START COMMAND === User {user.id} (@{user.username})")
+    logger.info(f"Command args: {context.args}")
+
     # Extract deep link parameters from /start
     referral_code = None
     market_id = None
 
     if context.args and len(context.args) > 0:
         arg = context.args[0]
+        logger.info(f"Processing deep link argument: {arg}")
         if arg.startswith("ref_"):
             referral_code = arg[4:]  # Remove "ref_" prefix
             logger.info(f"User {user.id} started with referral code: {referral_code}")
         elif arg.startswith("m_"):
             market_id = arg[2:]  # Remove "m_" prefix
-            logger.info(f"User {user.id} started with market deep link: {market_id}")
+            logger.info(f"✅ User {user.id} started with MARKET deep link: {market_id}")
 
     # Store for use during registration or after login
     context.user_data["referral_code"] = referral_code
     if market_id:
         context.user_data["deep_link_market"] = market_id
+        logger.info(f"✅ Stored deep_link_market in user_data: {market_id}")
 
     # Check if user already registered
-    if await user_service.is_registered(user.id):
+    is_registered = await user_service.is_registered(user.id)
+    logger.info(f"User {user.id} registration status: {is_registered}")
+
+    if is_registered:
         # If there's a market deep link, show that market's trade page
         if market_id:
-            logger.info(f"User {user.id} is registered, processing market deep link: {market_id}")
+            logger.info(f"✅ User {user.id} IS REGISTERED - Processing market deep link: {market_id}")
             # Store minimal market info to trigger detail view
             context.user_data["pending_market_id"] = market_id
+            logger.info(f"✅ Set pending_market_id to: {market_id}")
+            logger.info(f"✅ Calling show_main_menu for registered user with deep link")
             return await show_main_menu(update, context)
-        logger.info(f"User {user.id} is registered, showing main menu")
+        logger.info(f"User {user.id} is registered, showing main menu (no deep link)")
         return await show_main_menu(update, context)
 
     # Show license agreement
@@ -95,10 +105,13 @@ async def license_accept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         # Check if there was a deep link market
         deep_link_market = context.user_data.get("deep_link_market")
+        logger.info(f"Checking for deep_link_market after registration: {deep_link_market}")
         if deep_link_market:
             # Transfer to pending_market_id for menu handler
             context.user_data["pending_market_id"] = deep_link_market
-            logger.info(f"New user registered via market deep link: {deep_link_market}")
+            logger.info(f"✅ NEW USER registered via market deep link!")
+            logger.info(f"✅ Set pending_market_id to: {deep_link_market}")
+            logger.info(f"✅ Will show market detail after welcome message")
 
         # Show success message
         await query.edit_message_text(

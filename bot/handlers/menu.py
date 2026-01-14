@@ -19,18 +19,32 @@ async def show_main_menu(
     user = update.effective_user
     user_service = context.bot_data["user_service"]
 
+    logger.info(f"=== SHOW_MAIN_MENU === User {user.id}")
+    logger.info(f"send_new parameter: {send_new}")
+    logger.info(f"user_data keys: {list(context.user_data.keys())}")
+
     # Check for pending market deep link
     pending_market_id = context.user_data.pop("pending_market_id", None)
+    logger.info(f"pending_market_id from user_data: {pending_market_id}")
+
     if pending_market_id:
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        logger.info(f"Processing deep link for market: {pending_market_id}")
+        logger.info(f"✅ FOUND pending_market_id! Processing deep link for market: {pending_market_id}")
+        logger.info(f"Condition ID length: {len(pending_market_id)}")
 
         # Load market and show trade page
         market_service = context.bot_data["market_service"]
-        market = await market_service.get_market_detail(pending_market_id)
+        logger.info(f"Calling market_service.get_market_detail({pending_market_id[:20]}...)")
+
+        try:
+            market = await market_service.get_market_detail(pending_market_id)
+            logger.info(f"API call completed. Market result: {market is not None}")
+        except Exception as e:
+            logger.error(f"❌ Error fetching market: {e}", exc_info=True)
+            market = None
 
         if market:
-            logger.info(f"Market found: {market.question}")
+            logger.info(f"✅ Market FOUND! Question: {market.question}")
             # Store market in context
             context.user_data["current_market"] = {
                 "condition_id": market.condition_id,
@@ -80,16 +94,22 @@ async def show_main_menu(
                 ],
             ]
 
+            logger.info(f"✅ Sending market detail message to user {user.id}")
+            logger.info(f"Message text length: {len(text)} chars")
+
             await update.message.reply_text(
                 text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="Markdown",
             )
 
+            logger.info(f"✅ Market detail message sent successfully!")
+            logger.info(f"✅ Returning ConversationState.MARKET_DETAIL")
+
             return ConversationState.MARKET_DETAIL
         else:
             # Market not found
-            logger.warning(f"Market not found for condition_id: {pending_market_id}")
+            logger.warning(f"❌ Market NOT FOUND for condition_id: {pending_market_id}")
             await update.message.reply_text(
                 f"❌ Market not found.\n\n"
                 f"The market may have been removed or the link is invalid.\n\n"
