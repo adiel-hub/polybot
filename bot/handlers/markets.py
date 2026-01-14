@@ -164,42 +164,39 @@ async def handle_browse_callback(
     # Get bot username for deep links
     bot_username = context.bot.username
 
-    # Filter out expired and non-tradeable markets
-    tradeable_markets = filter_active_markets(markets)
+    # Filter out expired and non-tradeable markets, limit to 5 per page
+    tradeable_markets = filter_active_markets(markets)[:5]
 
-    for i, market in enumerate(tradeable_markets, 1):
-        # Format prices as percentages
-        yes_cents = int(market.yes_price * 100)
-        no_cents = int(market.no_price * 100)
+    if not tradeable_markets:
+        text += "<i>No tradeable markets found in this category.</i>\n"
+    else:
+        for i, market in enumerate(tradeable_markets, 1):
+            # Format prices as percentages
+            yes_cents = int(market.yes_price * 100)
+            no_cents = int(market.no_price * 100)
 
-        # Build trade deep link with short ID
-        short_id = generate_short_id(market.condition_id)
-        trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
+            # Build trade deep link with short ID
+            short_id = generate_short_id(market.condition_id)
+            trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
 
-        # Store mapping for lookup
-        if "market_short_ids" not in context.bot_data:
-            context.bot_data["market_short_ids"] = {}
-        context.bot_data["market_short_ids"][short_id] = market.condition_id
+            # Store mapping for lookup
+            if "market_short_ids" not in context.bot_data:
+                context.bot_data["market_short_ids"] = {}
+            context.bot_data["market_short_ids"][short_id] = market.condition_id
 
-        # Build Polymarket URL if slug exists
-        polymarket_link = ""
-        if market.slug:
-            polymarket_url = f"https://polymarket.com/market/{market.slug}"
-            polymarket_link = f" │ [View]({polymarket_url})"
+            # Build trade and view links (HTML format for better link support)
+            trade_html = f'📈 <a href="{trade_link}">Trade</a>'
+            polymarket_html = ""
+            if market.slug:
+                polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
-        # Build trade and view links (HTML format for better link support)
-        trade_html = f'📈 <a href="{trade_link}">Trade</a>'
-        polymarket_html = ""
-        if market.slug:
-            polymarket_url = f"https://polymarket.com/market/{market.slug}"
-            polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
-
-        text += (
-            f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
-            f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
-            f"  ├ 📊 24h Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
-            f"  └ {trade_html}{polymarket_html}\n\n"
-        )
+            text += (
+                f"{i}) {market.question[:50]}{'...' if len(market.question) > 50 else ''}\n"
+                f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
+                f"  ├ 📊 Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
+                f"  └ {trade_html}{polymarket_html}\n\n"
+            )
 
     # Pagination navigation
     keyboard = []
@@ -235,6 +232,15 @@ async def handle_browse_callback(
         if "message is not modified" in str(e):
             # Message content is identical, just answer the callback
             await query.answer("Already on this page")
+        elif "too long" in str(e).lower():
+            # Message too long - truncate and retry
+            logger.warning(f"Message too long ({len(text)} chars), truncating")
+            truncated_text = text[:3500] + "\n\n<i>... (truncated)</i>"
+            await query.edit_message_text(
+                truncated_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
         else:
             raise
 
@@ -643,35 +649,38 @@ async def handle_search_input(
     # Get bot username for deep links
     bot_username = context.bot.username
 
-    # Filter out expired and non-tradeable markets
-    tradeable_markets = filter_active_markets(markets)
+    # Filter out expired and non-tradeable markets, limit to 5
+    tradeable_markets = filter_active_markets(markets)[:5]
 
-    for i, market in enumerate(tradeable_markets, 1):
-        yes_cents = int(market.yes_price * 100)
-        no_cents = int(market.no_price * 100)
+    if not tradeable_markets:
+        text += "<i>No tradeable markets found.</i>\n"
+    else:
+        for i, market in enumerate(tradeable_markets, 1):
+            yes_cents = int(market.yes_price * 100)
+            no_cents = int(market.no_price * 100)
 
-        # Build trade deep link with short ID
-        short_id = generate_short_id(market.condition_id)
-        trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
+            # Build trade deep link with short ID
+            short_id = generate_short_id(market.condition_id)
+            trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
 
-        # Store mapping for lookup
-        if "market_short_ids" not in context.bot_data:
-            context.bot_data["market_short_ids"] = {}
-        context.bot_data["market_short_ids"][short_id] = market.condition_id
+            # Store mapping for lookup
+            if "market_short_ids" not in context.bot_data:
+                context.bot_data["market_short_ids"] = {}
+            context.bot_data["market_short_ids"][short_id] = market.condition_id
 
-        # Build trade and view links (HTML format)
-        trade_html = f'📈 <a href="{trade_link}">Trade</a>'
-        polymarket_html = ""
-        if market.slug:
-            polymarket_url = f"https://polymarket.com/market/{market.slug}"
-            polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
+            # Build trade and view links (HTML format)
+            trade_html = f'📈 <a href="{trade_link}">Trade</a>'
+            polymarket_html = ""
+            if market.slug:
+                polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
-        text += (
-            f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
-            f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
-            f"  ├ 📊 Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
-            f"  └ {trade_html}{polymarket_html}\n\n"
-        )
+            text += (
+                f"{i}) {market.question[:50]}{'...' if len(market.question) > 50 else ''}\n"
+                f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
+                f"  ├ 📊 Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
+                f"  └ {trade_html}{polymarket_html}\n\n"
+            )
 
     keyboard = []
 
