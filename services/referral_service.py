@@ -138,19 +138,15 @@ class ReferralService:
             }
         """
         try:
-            logger.info(f"[GET_REFERRAL_STATS] Getting stats for user_id={user_id}")
             # Get user info
             user = await self.user_repo.get_by_id(user_id)
             if not user:
-                logger.warning(f"[GET_REFERRAL_STATS] User {user_id} not found, returning empty stats")
                 return self._empty_stats()
-
-            logger.info(f"[GET_REFERRAL_STATS] User {user_id} found. referral_code='{user.referral_code}'")
 
             # Get referral counts and commission stats
             stats = await self.referral_repo.get_referral_stats(user_id)
 
-            result = {
+            return {
                 "referral_counts": stats["referral_counts"],
                 "total_referrals": stats["total_referrals"],
                 "lifetime_earned": user.total_earned,
@@ -158,11 +154,9 @@ class ReferralService:
                 "claimable": user.commission_balance,
                 "referral_code": user.referral_code or "",
             }
-            logger.info(f"[GET_REFERRAL_STATS] Returning stats for user {user_id}: {result}")
-            return result
 
         except Exception as e:
-            logger.error(f"[GET_REFERRAL_STATS] Failed to get referral stats for user {user_id}: {e}", exc_info=True)
+            logger.error(f"Failed to get referral stats: {e}")
             return self._empty_stats()
 
     def _empty_stats(self) -> Dict[str, Any]:
@@ -187,20 +181,12 @@ class ReferralService:
         Returns:
             Referral link (e.g., https://t.me/TradePolyBot?start=ref_1184qzv)
         """
-        logger.info(f"[GET_REFERRAL_LINK] Getting link for user_id={user_id}, bot_username={bot_username}")
         user = await self.user_repo.get_by_id(user_id)
 
-        if not user:
-            logger.error(f"[GET_REFERRAL_LINK] User {user_id} not found in database")
+        if not user or not user.referral_code:
             return ""
 
-        if not user.referral_code:
-            logger.warning(f"[GET_REFERRAL_LINK] User {user_id} has no referral_code (value: {user.referral_code})")
-            return ""
-
-        link = f"https://t.me/{bot_username}?start=ref_{user.referral_code}"
-        logger.info(f"[GET_REFERRAL_LINK] Generated link for user {user_id}: '{link}'")
-        return link
+        return f"https://t.me/{bot_username}?start=ref_{user.referral_code}"
 
     async def claim_earnings(self, user_id: int) -> Tuple[bool, str]:
         """

@@ -22,37 +22,27 @@ async def show_referral_menu(
         await query.answer()
 
     telegram_user = update.effective_user
-    logger.info(f"[REFERRAL MENU] Telegram user {telegram_user.id} (@{telegram_user.username}) viewing referral menu")
-
     referral_service = context.bot_data["referral_service"]
     user_service = context.bot_data["user_service"]
 
     # Get database user from telegram ID
     db_user = await user_service.get_user(telegram_user.id)
     if not db_user:
-        logger.error(f"[REFERRAL MENU] Database user not found for telegram_id={telegram_user.id}")
         await query.answer("❌ User not found. Please contact support.", show_alert=True)
         return ConversationState.REFERRAL_MENU
 
     user_id = db_user.id
-    logger.info(f"[REFERRAL MENU] Found database user_id={user_id} for telegram_id={telegram_user.id}")
 
     # Ensure user has a referral code (generate if missing)
     stats = await referral_service.get_referral_stats(user_id)
-    logger.info(f"[REFERRAL MENU] User {user_id} stats: {stats}")
 
     if not stats['referral_code']:
-        logger.warning(f"[REFERRAL MENU] User {user_id} has no referral code, generating one...")
-        new_code = await user_service.generate_referral_code_for_user(user_id)
-        logger.info(f"[REFERRAL MENU] Generated code '{new_code}' for user {user_id}")
+        await user_service.generate_referral_code_for_user(user_id)
         stats = await referral_service.get_referral_stats(user_id)
-        logger.info(f"[REFERRAL MENU] Updated stats after generation: {stats}")
 
     # Get referral link
     bot_username = context.bot.username
-    logger.info(f"[REFERRAL MENU] Bot username: {bot_username}")
     referral_link = await referral_service.get_referral_link(user_id, bot_username)
-    logger.info(f"[REFERRAL MENU] Generated referral link: '{referral_link}'")
 
     # Build referral menu message
     message = (
@@ -121,8 +111,23 @@ async def show_referral_menu(
                 parse_mode="Markdown",
             )
         except BadRequest as e:
-            # Ignore "message is not modified" error
-            if "message is not modified" not in str(e).lower():
+            # Handle cases where message can't be edited (e.g., after sending photo)
+            if "message is not modified" in str(e).lower():
+                # Message content is the same, ignore
+                pass
+            elif "no text in the message to edit" in str(e).lower():
+                # Message is a photo/media, delete it and send new text message
+                try:
+                    await query.message.delete()
+                except:
+                    pass
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=message,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="Markdown",
+                )
+            else:
                 raise
     else:
         await update.message.reply_text(
