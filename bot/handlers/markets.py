@@ -145,7 +145,7 @@ async def handle_browse_callback(
         polymarket_link = ""
         if market.slug:
             polymarket_url = f"https://polymarket.com/market/{market.slug}"
-            polymarket_link = f" │ [🔗 View]({polymarket_url})"
+            polymarket_link = f" │ [View]({polymarket_url})"
 
         text += (
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
@@ -265,7 +265,7 @@ async def show_market_detail(
     # Add Polymarket link if slug exists
     if market.slug:
         polymarket_url = f"https://polymarket.com/market/{market.slug}"
-        text += f"\n🔗 [View on Polymarket]({polymarket_url})\n"
+        text += f"\n[View on Polymarket]({polymarket_url})\n"
 
     keyboard = [
         [
@@ -345,8 +345,8 @@ async def handle_search_input(
                     # Build Polymarket URL if slug exists
                     polymarket_link = ""
                     if m.slug:
-                        polymarket_url = f"https://polymarket.com/event/{m.slug}"
-                        polymarket_link = f" │ [🔗 View]({polymarket_url})"
+                        polymarket_url = f"https://polymarket.com/market/{m.slug}"
+                        polymarket_link = f" │ [View]({polymarket_url})"
 
                     text += (
                         f"{i}) {m.question[:60]}{'...' if len(m.question) > 60 else ''}\n"
@@ -415,8 +415,8 @@ async def handle_search_input(
 
                     # Add Polymarket link if slug exists
                     if market.slug:
-                        polymarket_url = f"https://polymarket.com/event/{market.slug}"
-                        text += f"\n🔗 [View on Polymarket]({polymarket_url})\n"
+                        polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                        text += f"\n[View on Polymarket]({polymarket_url})\n"
 
                     keyboard = [
                         [
@@ -483,8 +483,8 @@ async def handle_search_input(
 
         # Add Polymarket link if slug exists
         if market.slug:
-            polymarket_url = f"https://polymarket.com/event/{market.slug}"
-            text += f"\n🔗 [View on Polymarket]({polymarket_url})\n"
+            polymarket_url = f"https://polymarket.com/market/{market.slug}"
+            text += f"\n[View on Polymarket]({polymarket_url})\n"
 
         keyboard = [
             [
@@ -532,7 +532,7 @@ async def handle_search_input(
         polymarket_link = ""
         if market.slug:
             polymarket_url = f"https://polymarket.com/market/{market.slug}"
-            polymarket_link = f" │ [🔗 View]({polymarket_url})"
+            polymarket_link = f" │ [View]({polymarket_url})"
 
         text += (
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
