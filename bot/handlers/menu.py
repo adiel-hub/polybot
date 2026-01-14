@@ -46,11 +46,31 @@ async def show_main_menu(
             parse_mode="Markdown",
         )
     elif update.callback_query:
-        await update.callback_query.edit_message_text(
-            menu_text,
-            reply_markup=keyboard,
-            parse_mode="Markdown",
-        )
+        from telegram.error import BadRequest
+        try:
+            await update.callback_query.edit_message_text(
+                menu_text,
+                reply_markup=keyboard,
+                parse_mode="Markdown",
+            )
+        except BadRequest as e:
+            # Handle cases where message can't be edited (e.g., after sending photo)
+            if "message is not modified" in str(e).lower():
+                pass
+            elif "no text in the message to edit" in str(e).lower():
+                # Message is a photo/media, delete it and send new text message
+                try:
+                    await update.callback_query.message.delete()
+                except:
+                    pass
+                await context.bot.send_message(
+                    chat_id=update.callback_query.message.chat_id,
+                    text=menu_text,
+                    reply_markup=keyboard,
+                    parse_mode="Markdown",
+                )
+            else:
+                raise
     else:
         await update.message.reply_text(
             menu_text,
