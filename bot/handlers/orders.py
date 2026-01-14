@@ -30,7 +30,10 @@ async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         return ConversationState.MAIN_MENU
 
     # Get orders
-    orders = await trading_service.get_user_orders(db_user.id, limit=20)
+    all_orders = await trading_service.get_user_orders(db_user.id, limit=20)
+
+    # Filter out failed orders
+    orders = [o for o in all_orders if o.status.value != 'FAILED']
     open_orders = await trading_service.get_open_orders(db_user.id)
 
     if not orders:
@@ -69,7 +72,6 @@ async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         "",
         f"✅ Filled: `{sum(1 for o in orders if o.status.value == 'FILLED')}`",
         f"📖 Open: `{len(open_orders)}`",
-        f"❌ Failed: `{sum(1 for o in orders if o.status.value == 'FAILED')}`",
         f"🚫 Cancelled: `{sum(1 for o in orders if o.status.value == 'CANCELLED')}`",
         "",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
