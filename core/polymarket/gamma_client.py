@@ -28,6 +28,7 @@ class Market:
     liquidity: float
     end_date: Optional[str]
     is_active: bool
+    slug: Optional[str] = None
 
     @classmethod
     def from_api(cls, data: Dict[str, Any]) -> "Market":
@@ -74,6 +75,7 @@ class Market:
             liquidity=float(market.get("liquidity", 0) or 0),
             end_date=market.get("endDate", data.get("endDate")),
             is_active=market.get("active", True) and not market.get("closed", False),
+            slug=market.get("slug", data.get("slug")),
         )
 
 

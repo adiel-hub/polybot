@@ -141,11 +141,17 @@ async def handle_browse_callback(
         yes_cents = int(market.yes_price * 100)
         no_cents = int(market.no_price * 100)
 
+        # Build Polymarket URL if slug exists
+        polymarket_link = ""
+        if market.slug:
+            polymarket_url = f"https://polymarket.com/event/{market.slug}"
+            polymarket_link = f" │ [🔗 View]({polymarket_url})"
+
         text += (
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
             f"  ├ ✅ YES `{yes_cents}c` │ ❌ NO `{no_cents}c`\n"
             f"  ├ 📊 24h Vol `${market.volume_24h:,.0f}` │ 💧 Liq `${market.liquidity:,.0f}`\n"
-            f"  └ 📈 Trade │ 🔗 View on Polymarket\n\n"
+            f"  └ 📈 Trade{polymarket_link}\n\n"
         )
 
         # Add trade button for each market
@@ -256,6 +262,11 @@ async def show_market_detail(
     if market.end_date:
         text += f"\n⏰ *Timeline*\n└ 📅 Expires: {market.end_date}\n"
 
+    # Add Polymarket link if slug exists
+    if market.slug:
+        polymarket_url = f"https://polymarket.com/event/{market.slug}"
+        text += f"\n🔗 [View on Polymarket]({polymarket_url})\n"
+
     keyboard = [
         [
             InlineKeyboardButton("📈 Buy Yes", callback_data="trade_buy_yes"),
@@ -331,9 +342,15 @@ async def handle_search_input(
                 for i, m in enumerate(markets[:5], 1):
                     yes_cents = int(m.yes_price * 100)
 
+                    # Build Polymarket URL if slug exists
+                    polymarket_link = ""
+                    if m.slug:
+                        polymarket_url = f"https://polymarket.com/event/{m.slug}"
+                        polymarket_link = f" │ [🔗 View]({polymarket_url})"
+
                     text += (
                         f"{i}) {m.question[:60]}{'...' if len(m.question) > 60 else ''}\n"
-                        f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${m.volume_24h:,.0f}`\n\n"
+                        f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${m.volume_24h:,.0f}`{polymarket_link}\n\n"
                     )
 
                     keyboard.append([
@@ -395,6 +412,11 @@ async def handle_search_input(
 
                     if market.end_date:
                         text += f"\n⏰ *Timeline*\n└ 📅 Expires: {market.end_date}\n"
+
+                    # Add Polymarket link if slug exists
+                    if market.slug:
+                        polymarket_url = f"https://polymarket.com/event/{market.slug}"
+                        text += f"\n🔗 [View on Polymarket]({polymarket_url})\n"
 
                     keyboard = [
                         [
@@ -459,6 +481,11 @@ async def handle_search_input(
         if market.end_date:
             text += f"\n⏰ *Timeline*\n└ 📅 Expires: {market.end_date}\n"
 
+        # Add Polymarket link if slug exists
+        if market.slug:
+            polymarket_url = f"https://polymarket.com/event/{market.slug}"
+            text += f"\n🔗 [View on Polymarket]({polymarket_url})\n"
+
         keyboard = [
             [
                 InlineKeyboardButton("📈 Buy Yes", callback_data="trade_buy_yes"),
@@ -501,9 +528,15 @@ async def handle_search_input(
     for i, market in enumerate(markets, 1):
         yes_cents = int(market.yes_price * 100)
 
+        # Build Polymarket URL if slug exists
+        polymarket_link = ""
+        if market.slug:
+            polymarket_url = f"https://polymarket.com/event/{market.slug}"
+            polymarket_link = f" │ [🔗 View]({polymarket_url})"
+
         text += (
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
-            f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${market.volume_24h:,.0f}`\n\n"
+            f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${market.volume_24h:,.0f}`{polymarket_link}\n\n"
         )
 
         keyboard.append([
