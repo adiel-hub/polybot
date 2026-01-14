@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 from bot.conversations.states import ConversationState
 from bot.handlers.menu import show_main_menu
 from config.constants import LICENSE_TEXT
+from utils.short_id import generate_short_id
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,26 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             referral_code = arg[4:]  # Remove "ref_" prefix
             logger.info(f"User {user.id} started with referral code: {referral_code}")
         elif arg.startswith("m_"):
-            market_id = arg[2:]  # Remove "m_" prefix
-            logger.info(f"✅ User {user.id} started with MARKET deep link: {market_id}")
+            short_or_full_id = arg[2:]  # Remove "m_" prefix
+            logger.info(f"✅ User {user.id} started with MARKET deep link: {short_or_full_id}")
+
+            # Check if it's a short ID (8 chars) or full condition_id
+            if len(short_or_full_id) == 8:
+                # It's a short ID - try to resolve it
+                short_id_map = context.bot_data.get("market_short_ids", {})
+                market_id = short_id_map.get(short_or_full_id)
+
+                if not market_id:
+                    # Short ID not in cache - we'll need to search for it
+                    # Store the short ID and we'll resolve it in the menu handler
+                    logger.info(f"⚠️ Short ID {short_or_full_id} not in cache, will search for it")
+                    market_id = short_or_full_id  # Pass it through for search
+                else:
+                    logger.info(f"✅ Resolved short ID {short_or_full_id} to condition_id: {market_id[:20]}...")
+            else:
+                # It's a full condition_id (backward compatibility)
+                market_id = short_or_full_id
+                logger.info(f"✅ Using full condition_id: {market_id[:20]}...")
 
     # Store for use during registration or after login
     context.user_data["referral_code"] = referral_code

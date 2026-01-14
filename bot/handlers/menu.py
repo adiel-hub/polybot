@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from bot.conversations.states import ConversationState
 from bot.keyboards.main_menu import get_main_menu_keyboard
+from utils.short_id import generate_short_id
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +33,29 @@ async def show_main_menu(
         logger.info(f"✅ FOUND pending_market_id! Processing deep link for market: {pending_market_id}")
         logger.info(f"Condition ID length: {len(pending_market_id)}")
 
+        # Check if it's a short ID (8 chars) and resolve it
+        actual_condition_id = pending_market_id
+        if len(pending_market_id) == 8:
+            # Try to resolve from cache first
+            short_id_map = context.bot_data.get("market_short_ids", {})
+            resolved_id = short_id_map.get(pending_market_id)
+
+            if resolved_id:
+                logger.info(f"✅ Resolved short ID {pending_market_id} from cache: {resolved_id[:20]}...")
+                actual_condition_id = resolved_id
+            else:
+                # Not in cache - need to search for market by generating all possible short IDs
+                # This happens when user clicks a deep link before browsing markets
+                logger.info(f"⚠️ Short ID {pending_market_id} not in cache, will try API lookup")
+                # For now, try it as-is - the API will return None if not found
+                actual_condition_id = pending_market_id
+
         # Load market and show trade page
         market_service = context.bot_data["market_service"]
-        logger.info(f"Calling market_service.get_market_detail({pending_market_id[:20]}...)")
+        logger.info(f"Calling market_service.get_market_detail({actual_condition_id[:20] if len(actual_condition_id) > 20 else actual_condition_id}...)")
 
         try:
-            market = await market_service.get_market_detail(pending_market_id)
+            market = await market_service.get_market_detail(actual_condition_id)
             logger.info(f"API call completed. Market result: {market is not None}")
         except Exception as e:
             logger.error(f"❌ Error fetching market: {e}", exc_info=True)
@@ -60,8 +78,8 @@ async def show_main_menu(
             no_cents = market.no_price * 100
 
             text = (
-                f"📊 {market.question}\n"
-                f"{'─' * 35}\n\n"
+                f"📊 *{market.question}*\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"💰 *Current Prices*\n"
                 f"├ ✅ Yes: `{yes_cents:.1f}c`\n"
                 f"└ ❌ No: `{no_cents:.1f}c`\n\n"

@@ -10,6 +10,7 @@ from bot.keyboards.main_menu import get_browse_keyboard
 from bot.keyboards.common import get_back_keyboard
 from utils.url_parser import is_polymarket_url, extract_slug_from_url, extract_url_from_text
 from utils.polymarket_scraper import scrape_market_from_url
+from utils.short_id import generate_short_id
 
 logger = logging.getLogger(__name__)
 
@@ -143,8 +144,14 @@ async def handle_browse_callback(
         yes_cents = int(market.yes_price * 100)
         no_cents = int(market.no_price * 100)
 
-        # Build trade deep link
-        trade_link = f"https://t.me/{bot_username}?start=m_{market.condition_id}"
+        # Build trade deep link with short ID
+        short_id = generate_short_id(market.condition_id)
+        trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
+
+        # Store mapping for lookup
+        if "market_short_ids" not in context.bot_data:
+            context.bot_data["market_short_ids"] = {}
+        context.bot_data["market_short_ids"][short_id] = market.condition_id
 
         # Build Polymarket URL if slug exists
         polymarket_link = ""
@@ -253,8 +260,8 @@ async def show_market_detail(
     no_cents = market.no_price * 100
 
     text = (
-        f"📊 {market.question}\n"
-        f"{'─' * 35}\n\n"
+        f"📊 *{market.question}*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"💰 *Current Prices*\n"
         f"├ ✅ Yes: `{yes_cents:.1f}c`\n"
         f"└ ❌ No: `{no_cents:.1f}c`\n\n"
@@ -349,8 +356,14 @@ async def handle_search_input(
                 for i, m in enumerate(markets[:5], 1):
                     yes_cents = int(m.yes_price * 100)
 
-                    # Build trade deep link
-                    trade_link = f"https://t.me/{bot_username}?start=m_{m.condition_id}"
+                    # Build trade deep link with short ID
+                    short_id = generate_short_id(m.condition_id)
+                    trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
+
+                    # Store mapping for lookup
+                    if "market_short_ids" not in context.bot_data:
+                        context.bot_data["market_short_ids"] = {}
+                    context.bot_data["market_short_ids"][short_id] = m.condition_id
 
                     # Build trade and view links (HTML format)
                     trade_html = f'📈 <a href="{trade_link}">Trade</a>'
@@ -406,7 +419,7 @@ async def handle_search_input(
 
                     text = (
                         f"🔗 *Market from URL*\n"
-                        f"{'─' * 35}\n\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"📊 {market.question}\n\n"
                         f"💰 *Current Prices*\n"
                         f"├ ✅ Yes: `{yes_cents:.1f}c`\n"
@@ -474,7 +487,7 @@ async def handle_search_input(
 
         text = (
             f"🔗 *Market from URL*\n"
-            f"{'─' * 35}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📊 {market.question}\n\n"
             f"💰 *Current Prices*\n"
             f"├ ✅ Yes: `{yes_cents:.1f}c`\n"
@@ -537,8 +550,14 @@ async def handle_search_input(
     for i, market in enumerate(markets, 1):
         yes_cents = int(market.yes_price * 100)
 
-        # Build trade deep link
-        trade_link = f"https://t.me/{bot_username}?start=m_{market.condition_id}"
+        # Build trade deep link with short ID
+        short_id = generate_short_id(market.condition_id)
+        trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
+
+        # Store mapping for lookup
+        if "market_short_ids" not in context.bot_data:
+            context.bot_data["market_short_ids"] = {}
+        context.bot_data["market_short_ids"][short_id] = market.condition_id
 
         # Build trade and view links (HTML format)
         trade_html = f'📈 <a href="{trade_link}">Trade</a>'
