@@ -32,7 +32,17 @@ async def test_handle_create_qr_generates_valid_qr():
     referral_service.get_referral_link = AsyncMock(
         return_value="https://t.me/test_bot?start=ref_abc1234"
     )
-    context.bot_data = {"referral_service": referral_service}
+    referral_service.get_referral_stats = AsyncMock(
+        return_value={"referral_code": "abc1234"}
+    )
+
+    # Mock user service
+    user_service = AsyncMock()
+
+    context.bot_data = {
+        "referral_service": referral_service,
+        "user_service": user_service
+    }
 
     # Call the handler
     result = await handle_create_qr(update, context)
@@ -89,7 +99,16 @@ async def test_handle_create_qr_qr_code_contains_correct_data():
     referral_link = "https://t.me/test_bot?start=ref_abc1234"
     referral_service = AsyncMock()
     referral_service.get_referral_link = AsyncMock(return_value=referral_link)
-    context.bot_data = {"referral_service": referral_service}
+    referral_service.get_referral_stats = AsyncMock(
+        return_value={"referral_code": "abc1234"}
+    )
+
+    user_service = AsyncMock()
+
+    context.bot_data = {
+        "referral_service": referral_service,
+        "user_service": user_service
+    }
 
     # Call the handler
     await handle_create_qr(update, context)
@@ -137,7 +156,16 @@ async def test_handle_create_qr_with_special_characters_in_link():
     referral_link = "https://t.me/test_bot?start=ref_abc1234&utm_source=telegram&utm_campaign=test"
     referral_service = AsyncMock()
     referral_service.get_referral_link = AsyncMock(return_value=referral_link)
-    context.bot_data = {"referral_service": referral_service}
+    referral_service.get_referral_stats = AsyncMock(
+        return_value={"referral_code": "abc1234"}
+    )
+
+    user_service = AsyncMock()
+
+    context.bot_data = {
+        "referral_service": referral_service,
+        "user_service": user_service
+    }
 
     # Call the handler - should not raise any exceptions
     result = await handle_create_qr(update, context)
@@ -170,7 +198,16 @@ async def test_handle_create_qr_keyboard_buttons():
     referral_service.get_referral_link = AsyncMock(
         return_value="https://t.me/test_bot?start=ref_abc1234"
     )
-    context.bot_data = {"referral_service": referral_service}
+    referral_service.get_referral_stats = AsyncMock(
+        return_value={"referral_code": "abc1234"}
+    )
+
+    user_service = AsyncMock()
+
+    context.bot_data = {
+        "referral_service": referral_service,
+        "user_service": user_service
+    }
 
     # Call the handler
     await handle_create_qr(update, context)
@@ -195,3 +232,47 @@ async def test_handle_create_qr_keyboard_buttons():
     assert len(keyboard[1]) == 1
     assert keyboard[1][0].text == "🏠 Main Menu"
     assert keyboard[1][0].callback_data == "menu_main"
+
+
+@pytest.mark.asyncio
+async def test_handle_create_qr_generates_code_if_missing():
+    """Test that QR handler generates a referral code if user doesn't have one."""
+    # Setup mocks
+    update = MagicMock()
+    context = MagicMock()
+
+    query = AsyncMock()
+    query.message.chat_id = 12345
+    update.callback_query = query
+    update.effective_user.id = 67890
+
+    context.bot.username = "test_bot"
+    context.bot.send_photo = AsyncMock()
+
+    # Mock referral service - no code initially
+    referral_service = AsyncMock()
+    referral_service.get_referral_stats = AsyncMock(
+        return_value={"referral_code": ""}  # Empty code
+    )
+    referral_service.get_referral_link = AsyncMock(
+        return_value="https://t.me/test_bot?start=ref_newcode123"
+    )
+
+    # Mock user service
+    user_service = AsyncMock()
+    user_service.generate_referral_code_for_user = AsyncMock(return_value="newcode123")
+
+    context.bot_data = {
+        "referral_service": referral_service,
+        "user_service": user_service
+    }
+
+    # Call the handler
+    result = await handle_create_qr(update, context)
+
+    # Verify referral code was generated
+    user_service.generate_referral_code_for_user.assert_called_once_with(67890)
+
+    # Verify QR code was still sent
+    context.bot.send_photo.assert_called_once()
+    assert result == ConversationState.REFERRAL_QR

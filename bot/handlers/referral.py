@@ -23,9 +23,13 @@ async def show_referral_menu(
 
     user = update.effective_user
     referral_service = context.bot_data["referral_service"]
+    user_service = context.bot_data["user_service"]
 
-    # Get referral stats
+    # Ensure user has a referral code (generate if missing)
     stats = await referral_service.get_referral_stats(user.id)
+    if not stats['referral_code']:
+        await user_service.generate_referral_code_for_user(user.id)
+        stats = await referral_service.get_referral_stats(user.id)
 
     # Get referral link
     bot_username = context.bot.username
@@ -177,6 +181,12 @@ async def handle_create_qr(
 
     user = update.effective_user
     referral_service = context.bot_data["referral_service"]
+    user_service = context.bot_data["user_service"]
+
+    # Ensure user has a referral code (generate if missing)
+    stats = await referral_service.get_referral_stats(user.id)
+    if not stats['referral_code']:
+        await user_service.generate_referral_code_for_user(user.id)
 
     # Get referral link
     bot_username = context.bot.username
