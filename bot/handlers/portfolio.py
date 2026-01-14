@@ -270,10 +270,9 @@ async def handle_position_callback(
     # Action buttons
     keyboard = []
 
-    # Sell options
+    # Sell option
     keyboard.append([
-        InlineKeyboardButton("📉 Sell All", callback_data=f"sell_position_{position_id}"),
-        InlineKeyboardButton("📊 Sell Partial", callback_data=f"sell_partial_{position_id}"),
+        InlineKeyboardButton("📉 Sell", callback_data=f"sell_position_{position_id}"),
     ])
 
     # Stop loss management
