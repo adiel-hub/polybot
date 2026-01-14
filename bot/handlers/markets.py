@@ -135,11 +135,16 @@ async def handle_browse_callback(
     text = f"💹 *Market Search - {category_names.get(category, category.title())}*\n"
     text += f"📄 Page {page}/{total_pages}\n\n"
 
-    keyboard = []
+    # Get bot username for deep links
+    bot_username = context.bot.username
+
     for i, market in enumerate(markets, 1):
         # Format prices as percentages
         yes_cents = int(market.yes_price * 100)
         no_cents = int(market.no_price * 100)
+
+        # Build trade deep link
+        trade_link = f"https://t.me/{bot_username}?start=m_{market.condition_id}"
 
         # Build Polymarket URL if slug exists
         polymarket_link = ""
@@ -151,18 +156,11 @@ async def handle_browse_callback(
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
             f"  ├ ✅ YES `{yes_cents}c` │ ❌ NO `{no_cents}c`\n"
             f"  ├ 📊 24h Vol `${market.volume_24h:,.0f}` │ 💧 Liq `${market.liquidity:,.0f}`\n"
-            f"  └ 📈 Trade{polymarket_link}\n\n"
+            f"  └ [📈 Trade]({trade_link}){polymarket_link}\n\n"
         )
 
-        # Add trade button for each market
-        keyboard.append([
-            InlineKeyboardButton(
-                f"📈 {i}. Trade",
-                callback_data=f"market_{market.condition_id[:20]}",
-            )
-        ])
-
     # Pagination navigation
+    keyboard = []
     nav_row = []
 
     if page > 1:
@@ -338,9 +336,14 @@ async def handle_search_input(
                 text = f'🔍 *Results for Polymarket URL*\n\n'
                 text += f"_Direct slug lookup failed, showing search results for: {search_query}_\n\n"
 
-                keyboard = []
+                # Get bot username for deep links
+                bot_username = context.bot.username
+
                 for i, m in enumerate(markets[:5], 1):
                     yes_cents = int(m.yes_price * 100)
+
+                    # Build trade deep link
+                    trade_link = f"https://t.me/{bot_username}?start=m_{m.condition_id}"
 
                     # Build Polymarket URL if slug exists
                     polymarket_link = ""
@@ -350,15 +353,11 @@ async def handle_search_input(
 
                     text += (
                         f"{i}) {m.question[:60]}{'...' if len(m.question) > 60 else ''}\n"
-                        f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${m.volume_24h:,.0f}`{polymarket_link}\n\n"
+                        f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${m.volume_24h:,.0f}`\n"
+                        f"  └ [📈 Trade]({trade_link}){polymarket_link}\n\n"
                     )
 
-                    keyboard.append([
-                        InlineKeyboardButton(
-                            f"📈 {i}. Trade",
-                            callback_data=f"market_{m.condition_id[:20]}",
-                        )
-                    ])
+                keyboard = []
 
                 keyboard.append([
                     InlineKeyboardButton("🔙 Back", callback_data="menu_browse"),
@@ -524,9 +523,14 @@ async def handle_search_input(
 
     text = f'🔍 *Search Results for "{query_text}"*\n\n'
 
-    keyboard = []
+    # Get bot username for deep links
+    bot_username = context.bot.username
+
     for i, market in enumerate(markets, 1):
         yes_cents = int(market.yes_price * 100)
+
+        # Build trade deep link
+        trade_link = f"https://t.me/{bot_username}?start=m_{market.condition_id}"
 
         # Build Polymarket URL if slug exists
         polymarket_link = ""
@@ -536,15 +540,11 @@ async def handle_search_input(
 
         text += (
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
-            f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${market.volume_24h:,.0f}`{polymarket_link}\n\n"
+            f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${market.volume_24h:,.0f}`\n"
+            f"  └ [📈 Trade]({trade_link}){polymarket_link}\n\n"
         )
 
-        keyboard.append([
-            InlineKeyboardButton(
-                f"📈 {i}. Trade",
-                callback_data=f"market_{market.condition_id[:20]}",
-            )
-        ])
+    keyboard = []
 
     keyboard.append([
         InlineKeyboardButton("🔙 Back", callback_data="menu_browse"),

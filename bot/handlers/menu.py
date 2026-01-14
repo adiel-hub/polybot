@@ -19,6 +19,72 @@ async def show_main_menu(
     user = update.effective_user
     user_service = context.bot_data["user_service"]
 
+    # Check for pending market deep link
+    pending_market_id = context.user_data.pop("pending_market_id", None)
+    if pending_market_id:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        # Load market and show trade page
+        market_service = context.bot_data["market_service"]
+        market = await market_service.get_market_detail(pending_market_id)
+
+        if market:
+            # Store market in context
+            context.user_data["current_market"] = {
+                "condition_id": market.condition_id,
+                "question": market.question,
+                "yes_token_id": market.yes_token_id,
+                "no_token_id": market.no_token_id,
+                "yes_price": market.yes_price,
+                "no_price": market.no_price,
+            }
+
+            # Format market details
+            yes_cents = market.yes_price * 100
+            no_cents = market.no_price * 100
+
+            text = (
+                f"📊 {market.question}\n"
+                f"{'─' * 35}\n\n"
+                f"💰 *Current Prices*\n"
+                f"├ ✅ Yes: `{yes_cents:.1f}c`\n"
+                f"└ ❌ No: `{no_cents:.1f}c`\n\n"
+                f"📈 *Market Stats*\n"
+                f"├ 📊 Volume (All): `${market.total_volume:,.2f}`\n"
+                f"├ 📊 Volume (24h): `${market.volume_24h:,.2f}`\n"
+                f"└ 💧 Liquidity: `${market.liquidity:,.2f}`\n"
+            )
+
+            if market.end_date:
+                text += f"\n⏰ *Timeline*\n└ 📅 Expires: {market.end_date}\n"
+
+            # Add Polymarket link if slug exists
+            if market.slug:
+                polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                text += f"\n[View on Polymarket]({polymarket_url})\n"
+
+            keyboard = [
+                [
+                    InlineKeyboardButton("📈 Buy Yes", callback_data="trade_buy_yes"),
+                    InlineKeyboardButton("📉 Buy No", callback_data="trade_buy_no"),
+                ],
+                [
+                    InlineKeyboardButton("📊 Limit Yes", callback_data="trade_limit_yes"),
+                    InlineKeyboardButton("📊 Limit No", callback_data="trade_limit_no"),
+                ],
+                [
+                    InlineKeyboardButton("🔄 Refresh", callback_data=f"market_{pending_market_id[:20]}"),
+                    InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
+                ],
+            ]
+
+            await update.message.reply_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown",
+            )
+
+            return ConversationState.MARKET_DETAIL
+
     # Get user stats
     stats = await user_service.get_user_stats(user.id)
 

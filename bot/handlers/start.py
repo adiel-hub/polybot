@@ -16,19 +16,32 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     user = update.effective_user
     user_service = context.bot_data["user_service"]
 
-    # Extract referral code from /start ref_<code>
+    # Extract deep link parameters from /start
     referral_code = None
+    market_id = None
+
     if context.args and len(context.args) > 0:
         arg = context.args[0]
         if arg.startswith("ref_"):
             referral_code = arg[4:]  # Remove "ref_" prefix
             logger.info(f"User {user.id} started with referral code: {referral_code}")
+        elif arg.startswith("m_"):
+            market_id = arg[2:]  # Remove "m_" prefix
+            logger.info(f"User {user.id} started with market deep link: {market_id}")
 
-    # Store for use during registration
+    # Store for use during registration or after login
     context.user_data["referral_code"] = referral_code
+    if market_id:
+        context.user_data["deep_link_market"] = market_id
 
     # Check if user already registered
     if await user_service.is_registered(user.id):
+        # If there's a market deep link, show that market's trade page
+        if market_id:
+            from bot.handlers.markets import show_market_detail
+            # Store minimal market info to trigger detail view
+            context.user_data["pending_market_id"] = market_id
+            return await show_main_menu(update, context)
         return await show_main_menu(update, context)
 
     # Show license agreement
