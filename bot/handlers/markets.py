@@ -253,6 +253,7 @@ async def handle_browse_callback(
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
+            disable_web_page_preview=True,
         )
     except BadRequest as e:
         if "message is not modified" in str(e):
@@ -266,6 +267,7 @@ async def handle_browse_callback(
                 truncated_text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="HTML",
+                disable_web_page_preview=True,
             )
         else:
             raise
@@ -505,6 +507,7 @@ async def show_event_options(
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
+            disable_web_page_preview=True,
         )
     except BadRequest as e:
         if "message is not modified" not in str(e):
@@ -623,6 +626,7 @@ async def show_event_options_from_deeplink(
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
+        disable_web_page_preview=True,
     )
 
     return ConversationState.EVENT_OPTIONS
@@ -719,6 +723,7 @@ async def handle_search_input(
                     text,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode="HTML",
+                    disable_web_page_preview=True,
                 )
 
                 return ConversationState.BROWSE_RESULTS
@@ -978,6 +983,7 @@ async def handle_search_input(
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
+        disable_web_page_preview=True,
     )
 
     return ConversationState.BROWSE_RESULTS
