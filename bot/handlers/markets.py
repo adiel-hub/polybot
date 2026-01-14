@@ -175,34 +175,45 @@ async def handle_browse_callback(
             yes_cents = int(market.yes_price * 100)
             no_cents = int(market.no_price * 100)
 
-            # Build trade deep link with short ID
-            short_id = generate_short_id(market.condition_id)
-            trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
+            # Check if multi-outcome event
+            is_multi_outcome = hasattr(market, 'outcomes_count') and market.outcomes_count > 1 and market.event_id
 
-            # Store mapping for lookup
-            if "market_short_ids" not in context.bot_data:
-                context.bot_data["market_short_ids"] = {}
-            context.bot_data["market_short_ids"][short_id] = market.condition_id
+            # Use event title for multi-outcome events, question for single markets
+            display_title = market.event_title if is_multi_outcome and market.event_title else market.question
+            display_title = display_title[:50] + ('...' if len(display_title) > 50 else '')
 
-            # Build trade and view links (HTML format for better link support)
-            trade_html = f'📈 <a href="{trade_link}">Trade</a>'
-            polymarket_html = ""
-            if market.slug:
-                polymarket_url = f"https://polymarket.com/market/{market.slug}"
-                polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
-
-            # Check if this is part of a multi-outcome event - add clickable link
-            options_html = ""
-            if hasattr(market, 'outcomes_count') and market.outcomes_count > 1 and market.event_id:
+            if is_multi_outcome:
+                # Multi-outcome event: show options link instead of trade link
                 event_link = f"https://t.me/{bot_username}?start=e_{market.event_id}"
-                options_html = f' │ 🎯 <a href="{event_link}">+{market.outcomes_count - 1} Options</a>'
+                actions_html = f'🎯 <a href="{event_link}">{market.outcomes_count} Options</a>'
 
-            text += (
-                f"{i}) {market.question[:50]}{'...' if len(market.question) > 50 else ''}\n"
-                f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
-                f"  ├ 📊 Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
-                f"  └ {trade_html}{polymarket_html}{options_html}\n\n"
-            )
+                text += (
+                    f"{i}) {display_title}\n"
+                    f"  ├ 📊 Vol <code>${market.total_volume:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
+                    f"  └ {actions_html}\n\n"
+                )
+            else:
+                # Single market: show trade link
+                short_id = generate_short_id(market.condition_id)
+                trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
+
+                # Store mapping for lookup
+                if "market_short_ids" not in context.bot_data:
+                    context.bot_data["market_short_ids"] = {}
+                context.bot_data["market_short_ids"][short_id] = market.condition_id
+
+                trade_html = f'📈 <a href="{trade_link}">Trade</a>'
+                polymarket_html = ""
+                if market.slug:
+                    polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                    polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
+
+                text += (
+                    f"{i}) {display_title}\n"
+                    f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
+                    f"  ├ 📊 Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
+                    f"  └ {trade_html}{polymarket_html}\n\n"
+                )
 
     # Pagination navigation
     keyboard = []
@@ -891,28 +902,45 @@ async def handle_search_input(
             yes_cents = int(market.yes_price * 100)
             no_cents = int(market.no_price * 100)
 
-            # Build trade deep link with short ID
-            short_id = generate_short_id(market.condition_id)
-            trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
+            # Check if multi-outcome event
+            is_multi_outcome = hasattr(market, 'outcomes_count') and market.outcomes_count > 1 and market.event_id
 
-            # Store mapping for lookup
-            if "market_short_ids" not in context.bot_data:
-                context.bot_data["market_short_ids"] = {}
-            context.bot_data["market_short_ids"][short_id] = market.condition_id
+            # Use event title for multi-outcome events, question for single markets
+            display_title = market.event_title if is_multi_outcome and market.event_title else market.question
+            display_title = display_title[:50] + ('...' if len(display_title) > 50 else '')
 
-            # Build trade and view links (HTML format)
-            trade_html = f'📈 <a href="{trade_link}">Trade</a>'
-            polymarket_html = ""
-            if market.slug:
-                polymarket_url = f"https://polymarket.com/market/{market.slug}"
-                polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
+            if is_multi_outcome:
+                # Multi-outcome event: show options link instead of trade link
+                event_link = f"https://t.me/{bot_username}?start=e_{market.event_id}"
+                actions_html = f'🎯 <a href="{event_link}">{market.outcomes_count} Options</a>'
 
-            text += (
-                f"{i}) {market.question[:50]}{'...' if len(market.question) > 50 else ''}\n"
-                f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
-                f"  ├ 📊 Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
-                f"  └ {trade_html}{polymarket_html}\n\n"
-            )
+                text += (
+                    f"{i}) {display_title}\n"
+                    f"  ├ 📊 Vol <code>${market.total_volume:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
+                    f"  └ {actions_html}\n\n"
+                )
+            else:
+                # Single market: show trade link
+                short_id = generate_short_id(market.condition_id)
+                trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
+
+                # Store mapping for lookup
+                if "market_short_ids" not in context.bot_data:
+                    context.bot_data["market_short_ids"] = {}
+                context.bot_data["market_short_ids"][short_id] = market.condition_id
+
+                trade_html = f'📈 <a href="{trade_link}">Trade</a>'
+                polymarket_html = ""
+                if market.slug:
+                    polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                    polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
+
+                text += (
+                    f"{i}) {display_title}\n"
+                    f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
+                    f"  ├ 📊 Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
+                    f"  └ {trade_html}{polymarket_html}\n\n"
+                )
 
     keyboard = []
 

@@ -194,9 +194,11 @@ class GammaMarketClient:
 
             for event in data:
                 try:
-                    # Expand multi-outcome events into individual markets
-                    event_markets = Market.all_from_event(event)
-                    markets.extend(event_markets)
+                    # Return one market per event (use first market as representative)
+                    # Multi-outcome events will show "+X Options" link for expansion
+                    market = Market.from_api(event)
+                    if market.yes_token_id:
+                        markets.append(market)
                 except Exception as e:
                     logger.warning(f"Failed to parse market: {e}")
                     continue
