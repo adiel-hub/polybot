@@ -31,13 +31,21 @@ class Market:
     slug: Optional[str] = None
 
     @classmethod
-    def from_api(cls, data: Dict[str, Any]) -> "Market":
-        """Create Market from API response."""
+    def from_api(cls, data: Dict[str, Any], market_data: Dict[str, Any] = None) -> "Market":
+        """Create Market from API response.
+
+        Args:
+            data: Event data from API
+            market_data: Optional specific market data (for multi-outcome events)
+        """
         import json
 
-        # Handle both event and market format
-        markets = data.get("markets", [data])
-        market = markets[0] if markets else data
+        # Use provided market_data or extract from event
+        if market_data:
+            market = market_data
+        else:
+            markets = data.get("markets", [data])
+            market = markets[0] if markets else data
 
         # Get token IDs - may be string or list
         tokens = market.get("clobTokenIds", [])
@@ -77,6 +85,38 @@ class Market:
             is_active=market.get("active", True) and not market.get("closed", False),
             slug=market.get("slug", data.get("slug")),
         )
+
+    @classmethod
+    def all_from_event(cls, event_data: Dict[str, Any]) -> List["Market"]:
+        """Create Market objects for all outcomes in a multi-outcome event.
+
+        For events with multiple markets (e.g., Super Bowl with 32 teams),
+        this returns a Market object for each outcome that has liquidity.
+
+        Args:
+            event_data: Event data from Gamma API
+
+        Returns:
+            List of Market objects for each tradeable outcome
+        """
+        markets_data = event_data.get("markets", [])
+
+        # If no markets array or single market, use standard parsing
+        if not markets_data or len(markets_data) <= 1:
+            market = cls.from_api(event_data)
+            return [market] if market.yes_token_id else []
+
+        # Multi-outcome event - parse each market
+        markets = []
+        for market_data in markets_data:
+            try:
+                market = cls.from_api(event_data, market_data)
+                if market.yes_token_id:
+                    markets.append(market)
+            except Exception:
+                continue
+
+        return markets
 
 
 class GammaMarketClient:
@@ -144,9 +184,9 @@ class GammaMarketClient:
 
             for event in data:
                 try:
-                    market = Market.from_api(event)
-                    if market.yes_token_id:  # Only include markets with valid tokens
-                        markets.append(market)
+                    # Expand multi-outcome events into individual markets
+                    event_markets = Market.all_from_event(event)
+                    markets.extend(event_markets)
                 except Exception as e:
                     logger.warning(f"Failed to parse market: {e}")
                     continue

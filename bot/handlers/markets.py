@@ -27,12 +27,16 @@ def is_market_expired(market) -> bool:
         return False
 
 
+def is_market_tradeable(market) -> bool:
+    """Check if a market has liquidity and is tradeable."""
+    return not (market.volume_24h == 0 and market.total_volume == 0 and market.liquidity == 0)
+
+
 def filter_active_markets(markets: list) -> list:
     """Filter out expired and non-tradeable markets."""
     return [
         m for m in markets
-        if not is_market_expired(m)
-        and not (m.volume_24h == 0 and m.total_volume == 0 and m.liquidity == 0)
+        if not is_market_expired(m) and is_market_tradeable(m)
     ]
 
 
