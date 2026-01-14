@@ -132,7 +132,7 @@ async def handle_browse_callback(
     # Pagination setup
     total_pages = 5  # Assume 5 pages max
 
-    text = f"💹 *Market Search - {category_names.get(category, category.title())}*\n"
+    text = f"💹 <b>Market Search - {category_names.get(category, category.title())}</b>\n"
     text += f"📄 Page {page}/{total_pages}\n\n"
 
     # Get bot username for deep links
@@ -152,11 +152,18 @@ async def handle_browse_callback(
             polymarket_url = f"https://polymarket.com/market/{market.slug}"
             polymarket_link = f" │ [View]({polymarket_url})"
 
+        # Build trade and view links (HTML format for better link support)
+        trade_html = f'📈 <a href="{trade_link}">Trade</a>'
+        polymarket_html = ""
+        if market.slug:
+            polymarket_url = f"https://polymarket.com/market/{market.slug}"
+            polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
+
         text += (
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
-            f"  ├ ✅ YES `{yes_cents}c` │ ❌ NO `{no_cents}c`\n"
-            f"  ├ 📊 24h Vol `${market.volume_24h:,.0f}` │ 💧 Liq `${market.liquidity:,.0f}`\n"
-            f"  └ 📈 [Trade]({trade_link}){polymarket_link}\n\n"
+            f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
+            f"  ├ 📊 24h Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
+            f"  └ {trade_html}{polymarket_html}\n\n"
         )
 
     # Pagination navigation
@@ -187,7 +194,7 @@ async def handle_browse_callback(
         await query.edit_message_text(
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     except BadRequest as e:
         if "message is not modified" in str(e):
@@ -333,8 +340,8 @@ async def handle_search_input(
                 # If we found results, show them as search results
                 context.user_data["browse_markets"] = {m.condition_id: m for m in markets[:5]}
 
-                text = f'🔍 *Results for Polymarket URL*\n\n'
-                text += f"_Direct slug lookup failed, showing search results for: {search_query}_\n\n"
+                text = f'🔍 <b>Results for Polymarket URL</b>\n\n'
+                text += f"<i>Direct slug lookup failed, showing search results for: {search_query}</i>\n\n"
 
                 # Get bot username for deep links
                 bot_username = context.bot.username
@@ -345,16 +352,17 @@ async def handle_search_input(
                     # Build trade deep link
                     trade_link = f"https://t.me/{bot_username}?start=m_{m.condition_id}"
 
-                    # Build Polymarket URL if slug exists
-                    polymarket_link = ""
+                    # Build trade and view links (HTML format)
+                    trade_html = f'📈 <a href="{trade_link}">Trade</a>'
+                    polymarket_html = ""
                     if m.slug:
                         polymarket_url = f"https://polymarket.com/market/{m.slug}"
-                        polymarket_link = f" │ [View]({polymarket_url})"
+                        polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
                     text += (
                         f"{i}) {m.question[:60]}{'...' if len(m.question) > 60 else ''}\n"
-                        f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${m.volume_24h:,.0f}`\n"
-                        f"  └ 📈 [Trade]({trade_link}){polymarket_link}\n\n"
+                        f"  ├ ✅ YES <code>{yes_cents}c</code> │ 📊 Vol <code>${m.volume_24h:,.0f}</code>\n"
+                        f"  └ {trade_html}{polymarket_html}\n\n"
                     )
 
                 keyboard = []
@@ -367,7 +375,7 @@ async def handle_search_input(
                 await update.message.reply_text(
                     text,
                     reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode="Markdown",
+                    parse_mode="HTML",
                 )
 
                 return ConversationState.BROWSE_RESULTS
@@ -521,7 +529,7 @@ async def handle_search_input(
     # Store and display results
     context.user_data["browse_markets"] = {m.condition_id: m for m in markets}
 
-    text = f'🔍 *Search Results for "{query_text}"*\n\n'
+    text = f'🔍 <b>Search Results for "{query_text}"</b>\n\n'
 
     # Get bot username for deep links
     bot_username = context.bot.username
@@ -532,16 +540,17 @@ async def handle_search_input(
         # Build trade deep link
         trade_link = f"https://t.me/{bot_username}?start=m_{market.condition_id}"
 
-        # Build Polymarket URL if slug exists
-        polymarket_link = ""
+        # Build trade and view links (HTML format)
+        trade_html = f'📈 <a href="{trade_link}">Trade</a>'
+        polymarket_html = ""
         if market.slug:
             polymarket_url = f"https://polymarket.com/market/{market.slug}"
-            polymarket_link = f" │ [View]({polymarket_url})"
+            polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
         text += (
             f"{i}) {market.question[:60]}{'...' if len(market.question) > 60 else ''}\n"
-            f"  ├ ✅ YES `{yes_cents}c` │ 📊 Vol `${market.volume_24h:,.0f}`\n"
-            f"  └ 📈 [Trade]({trade_link}){polymarket_link}\n\n"
+            f"  ├ ✅ YES <code>{yes_cents}c</code> │ 📊 Vol <code>${market.volume_24h:,.0f}</code>\n"
+            f"  └ {trade_html}{polymarket_html}\n\n"
         )
 
     keyboard = []
@@ -554,7 +563,7 @@ async def handle_search_input(
     await update.message.reply_text(
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
     return ConversationState.BROWSE_RESULTS
