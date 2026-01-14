@@ -448,13 +448,21 @@ async def show_event_options(
             if outcome_name.endswith("?"):
                 outcome_name = outcome_name[:-1]
             # Truncate for display
-            outcome_name = outcome_name[:40] + ("..." if len(outcome_name) > 40 else "")
+            outcome_name = outcome_name[:50] + ("..." if len(outcome_name) > 50 else "")
 
-            trade_html = f'<a href="{trade_link}">Trade</a>'
+            no_cents = int(market.no_price * 100)
+
+            trade_html = f'📈 <a href="{trade_link}">Trade</a>'
+            polymarket_html = ""
+            if market.slug:
+                polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
             text += (
-                f"{i}. {outcome_name}\n"
-                f"   └ ✅ <code>{yes_cents}c</code> │ 💧 <code>${market.liquidity:,.0f}</code> │ {trade_html}\n\n"
+                f"{i}) {outcome_name}\n"
+                f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
+                f"  ├ 📊 Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
+                f"  └ {trade_html}{polymarket_html}\n\n"
             )
 
     # Pagination navigation
@@ -559,13 +567,21 @@ async def show_event_options_from_deeplink(
                 outcome_name = outcome_name[5:]
             if outcome_name.endswith("?"):
                 outcome_name = outcome_name[:-1]
-            outcome_name = outcome_name[:40] + ("..." if len(outcome_name) > 40 else "")
+            outcome_name = outcome_name[:50] + ("..." if len(outcome_name) > 50 else "")
 
-            trade_html = f'<a href="{trade_link}">Trade</a>'
+            no_cents = int(market.no_price * 100)
+
+            trade_html = f'📈 <a href="{trade_link}">Trade</a>'
+            polymarket_html = ""
+            if market.slug:
+                polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
             text += (
-                f"{i}. {outcome_name}\n"
-                f"   └ ✅ <code>{yes_cents}c</code> │ 💧 <code>${market.liquidity:,.0f}</code> │ {trade_html}\n\n"
+                f"{i}) {outcome_name}\n"
+                f"  ├ ✅ YES <code>{yes_cents}c</code> │ ❌ NO <code>{no_cents}c</code>\n"
+                f"  ├ 📊 Vol <code>${market.volume_24h:,.0f}</code> │ 💧 Liq <code>${market.liquidity:,.0f}</code>\n"
+                f"  └ {trade_html}{polymarket_html}\n\n"
             )
 
     # Pagination navigation
