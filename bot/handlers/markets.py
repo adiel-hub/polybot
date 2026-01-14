@@ -259,9 +259,30 @@ async def show_market_detail(
     yes_cents = market.yes_price * 100
     no_cents = market.no_price * 100
 
+    # Format expiration date
+    from datetime import datetime
+    expiry_text = ""
+    is_expired = False
+    if market.end_date:
+        try:
+            # Parse ISO format date
+            end_dt = datetime.fromisoformat(market.end_date.replace('Z', '+00:00'))
+            expiry_text = end_dt.strftime("%b %d, %Y at %I:%M %p UTC")
+            # Check if expired
+            is_expired = datetime.now(end_dt.tzinfo) > end_dt
+        except:
+            expiry_text = market.end_date
+
     text = (
         f"📊 *{market.question}*\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
+    )
+
+    # Add expiration warning if expired
+    if is_expired:
+        text += f"⚠️ *This market has expired and is closed for trading*\n\n"
+
+    text += (
         f"💰 *Current Prices*\n"
         f"├ ✅ Yes: `{yes_cents:.1f}c`\n"
         f"└ ❌ No: `{no_cents:.1f}c`\n\n"
@@ -271,8 +292,9 @@ async def show_market_detail(
         f"└ 💧 Liquidity: `${market.liquidity:,.2f}`\n"
     )
 
-    if market.end_date:
-        text += f"\n⏰ *Timeline*\n└ 📅 Expires: {market.end_date}\n"
+    if expiry_text:
+        status = "Expired" if is_expired else "Expires"
+        text += f"\n⏰ *Timeline*\n└ 📅 {status}: {expiry_text}\n"
 
     # Add Polymarket link if slug exists
     if market.slug:
@@ -420,10 +442,28 @@ async def handle_search_input(
                     yes_cents = market.yes_price * 100
                     no_cents = market.no_price * 100
 
+                    # Format expiration date
+                    from datetime import datetime
+                    expiry_text = ""
+                    is_expired = False
+                    if market.end_date:
+                        try:
+                            end_dt = datetime.fromisoformat(market.end_date.replace('Z', '+00:00'))
+                            expiry_text = end_dt.strftime("%b %d, %Y at %I:%M %p UTC")
+                            is_expired = datetime.now(end_dt.tzinfo) > end_dt
+                        except:
+                            expiry_text = market.end_date
+
                     text = (
                         f"🔗 *Market from URL*\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                        f"📊 {market.question}\n\n"
+                        f"📊 *{market.question}*\n\n"
+                    )
+
+                    if is_expired:
+                        text += f"⚠️ *This market has expired and is closed for trading*\n\n"
+
+                    text += (
                         f"💰 *Current Prices*\n"
                         f"├ ✅ Yes: `{yes_cents:.1f}c`\n"
                         f"└ ❌ No: `{no_cents:.1f}c`\n\n"
@@ -433,8 +473,9 @@ async def handle_search_input(
                         f"└ 💧 Liquidity: `${market.liquidity:,.2f}`\n"
                     )
 
-                    if market.end_date:
-                        text += f"\n⏰ *Timeline*\n└ 📅 Expires: {market.end_date}\n"
+                    if expiry_text:
+                        status = "Expired" if is_expired else "Expires"
+                        text += f"\n⏰ *Timeline*\n└ 📅 {status}: {expiry_text}\n"
 
                     # Add Polymarket link if slug exists
                     if market.slug:
@@ -489,10 +530,28 @@ async def handle_search_input(
         yes_cents = market.yes_price * 100
         no_cents = market.no_price * 100
 
+        # Format expiration date
+        from datetime import datetime
+        expiry_text = ""
+        is_expired = False
+        if market.end_date:
+            try:
+                end_dt = datetime.fromisoformat(market.end_date.replace('Z', '+00:00'))
+                expiry_text = end_dt.strftime("%b %d, %Y at %I:%M %p UTC")
+                is_expired = datetime.now(end_dt.tzinfo) > end_dt
+            except:
+                expiry_text = market.end_date
+
         text = (
             f"🔗 *Market from URL*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📊 {market.question}\n\n"
+            f"📊 *{market.question}*\n\n"
+        )
+
+        if is_expired:
+            text += f"⚠️ *This market has expired and is closed for trading*\n\n"
+
+        text += (
             f"💰 *Current Prices*\n"
             f"├ ✅ Yes: `{yes_cents:.1f}c`\n"
             f"└ ❌ No: `{no_cents:.1f}c`\n\n"
@@ -502,8 +561,9 @@ async def handle_search_input(
             f"└ 💧 Liquidity: `${market.liquidity:,.2f}`\n"
         )
 
-        if market.end_date:
-            text += f"\n⏰ *Timeline*\n└ 📅 Expires: {market.end_date}\n"
+        if expiry_text:
+            status = "Expired" if is_expired else "Expires"
+            text += f"\n⏰ *Timeline*\n└ 📅 {status}: {expiry_text}\n"
 
         # Add Polymarket link if slug exists
         if market.slug:
