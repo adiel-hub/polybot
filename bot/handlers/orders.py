@@ -171,8 +171,7 @@ async def show_order_details(
     ]
 
     market_question = order.market_question or "Unknown Market"
-    if len(market_question) > 60:
-        market_question = market_question[:60] + "..."
+    # Show full market question without truncation
     message_lines.append(f"_{market_question}_")
     message_lines.append("")
 
