@@ -38,10 +38,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     if await user_service.is_registered(user.id):
         # If there's a market deep link, show that market's trade page
         if market_id:
-            from bot.handlers.markets import show_market_detail
+            logger.info(f"User {user.id} is registered, processing market deep link: {market_id}")
             # Store minimal market info to trigger detail view
             context.user_data["pending_market_id"] = market_id
             return await show_main_menu(update, context)
+        logger.info(f"User {user.id} is registered, showing main menu")
         return await show_main_menu(update, context)
 
     # Show license agreement

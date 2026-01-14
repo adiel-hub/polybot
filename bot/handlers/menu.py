@@ -23,11 +23,14 @@ async def show_main_menu(
     pending_market_id = context.user_data.pop("pending_market_id", None)
     if pending_market_id:
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        logger.info(f"Processing deep link for market: {pending_market_id}")
+
         # Load market and show trade page
         market_service = context.bot_data["market_service"]
         market = await market_service.get_market_detail(pending_market_id)
 
         if market:
+            logger.info(f"Market found: {market.question}")
             # Store market in context
             context.user_data["current_market"] = {
                 "condition_id": market.condition_id,
@@ -84,6 +87,16 @@ async def show_main_menu(
             )
 
             return ConversationState.MARKET_DETAIL
+        else:
+            # Market not found
+            logger.warning(f"Market not found for condition_id: {pending_market_id}")
+            await update.message.reply_text(
+                f"❌ Market not found.\n\n"
+                f"The market may have been removed or the link is invalid.\n\n"
+                f"Use /start to access the main menu.",
+                parse_mode="Markdown",
+            )
+            return ConversationState.MAIN_MENU
 
     # Get user stats
     stats = await user_service.get_user_stats(user.id)
