@@ -164,7 +164,11 @@ class UserService:
 
         open_orders = await order_repo.count_open_orders(user.id)
         portfolio_value = await position_repo.get_total_value(user.id)
-        usdc_balance = wallet.usdc_balance if wallet else 0.0
+
+        # Get real-time USDC.e balance from blockchain
+        from core.blockchain.balance import get_balance_service
+        balance_service = get_balance_service()
+        usdc_balance = balance_service.get_balance(wallet.address) if wallet else 0.0
 
         return {
             "portfolio_value": portfolio_value,
