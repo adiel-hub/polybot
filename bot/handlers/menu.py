@@ -31,6 +31,20 @@ async def show_main_menu(
         from bot.handlers.markets import show_event_options_from_deeplink
         return await show_event_options_from_deeplink(update, context, pending_event_id)
 
+    # Check for pending copy trader deep link
+    pending_copy_trader = context.user_data.pop("pending_copy_trader", None)
+    if pending_copy_trader:
+        logger.info(f"✅ FOUND pending_copy_trader! Starting copy flow: {pending_copy_trader}")
+        from bot.handlers.copy_trading import start_copy_from_deeplink
+        return await start_copy_from_deeplink(update, context, pending_copy_trader)
+
+    # Check for pending view trader deep link
+    pending_view_trader = context.user_data.pop("pending_view_trader", None)
+    if pending_view_trader:
+        logger.info(f"✅ FOUND pending_view_trader! Showing trader profile: {pending_view_trader}")
+        from bot.handlers.copy_trading import view_trader_from_deeplink
+        return await view_trader_from_deeplink(update, context, pending_view_trader)
+
     # Check for pending market deep link
     pending_market_id = context.user_data.pop("pending_market_id", None)
     logger.info(f"pending_market_id from user_data: {pending_market_id}")

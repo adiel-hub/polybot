@@ -63,6 +63,9 @@ async def browse_top_traders(
     time_period = context.user_data.get("discover_time", "WEEK")
     order_by = context.user_data.get("discover_sort", "PNL")
 
+    # Get bot username for deep links
+    bot_username = context.bot.username
+
     # Fetch traders from leaderboard
     from services.leaderboard_service import LeaderboardService
 
@@ -81,7 +84,7 @@ async def browse_top_traders(
         )
 
         if not traders:
-            text = "🏆 *Discover Traders*\n\n❌ No traders found for this filter."
+            text = "🏆 <b>Discover Traders</b>\n\n❌ No traders found for this filter."
             keyboard = [
                 [InlineKeyboardButton("🔙 Back", callback_data="menu_copy")],
                 [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
@@ -90,7 +93,7 @@ async def browse_top_traders(
             await query.edit_message_text(
                 text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
             return ConversationState.COPY_TRADING_MENU
 
@@ -100,12 +103,11 @@ async def browse_top_traders(
         sort_display = "P&L" if order_by == "PNL" else "Volume"
 
         text = (
-            f"🏆 *Discover Traders*\n\n"
+            f"🏆 <b>Discover Traders</b>\n\n"
             f"🌍 {category_display} · ⏰ {time_display.get(time_period, '7d')} · "
             f"📊 by {sort_display}\n\n"
         )
 
-        keyboard = []
         for i, trader in enumerate(traders, 1):
             # Format trader display
             rank = trader.get("rank", offset + i)
@@ -117,29 +119,21 @@ async def browse_top_traders(
             pnl_emoji = "📈" if pnl >= 0 else "📉"
             verified_badge = "✅ " if verified else ""
 
+            # Create deep links for Copy and View
+            copy_link = f"https://t.me/{bot_username}?start=ct_{trader['address']}"
+            view_link = f"https://t.me/{bot_username}?start=vt_{trader['address']}"
+
             text += (
                 f"{rank}. {verified_badge}{name}\n"
-                f"├ {pnl_emoji} P&L: `${pnl:,.2f}` · 💹 Vol: `${volume:,.0f}`\n"
-                f"└ [Copy](callback://copy_trader_{trader['address']}) · "
-                f"[View](callback://view_trader_{trader['address']})\n\n"
+                f"├ {pnl_emoji} P&L: <code>${pnl:,.2f}</code> · 💹 Vol: <code>${volume:,.0f}</code>\n"
+                f'└ <a href="{copy_link}">Copy</a> · <a href="{view_link}">View</a>\n\n'
             )
-
-            # Add copy button for each trader
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"👥 Copy {name[:15]}",
-                    callback_data=f"copy_trader_{trader['address']}",
-                ),
-                InlineKeyboardButton(
-                    f"👁️ View",
-                    callback_data=f"view_trader_{trader['address']}",
-                ),
-            ])
 
         # Navigation row: Prev / Page X/Y / Next
         total_possible_pages = 10  # API limits to 1000 offset, so max 100 pages with limit=10
         current_page_display = page + 1
 
+        keyboard = []
         nav_row = []
         if page > 0:
             nav_row.append(InlineKeyboardButton("◀️ Prev", callback_data="discover_prev"))
@@ -170,7 +164,8 @@ async def browse_top_traders(
         await query.edit_message_text(
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
+            parse_mode="HTML",
+            disable_web_page_preview=True,
         )
 
     except Exception as e:
@@ -383,6 +378,106 @@ async def show_sort_filter(
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
+
+    return ConversationState.SELECT_TRADER
+
+
+async def start_copy_from_deeplink(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    trader_address: str,
+) -> int:
+    """Start copy subscription flow from deep link."""
+    logger.info(f"Starting copy flow from deep link for trader: {trader_address}")
+
+    context.user_data["copy_trader_address"] = trader_address
+
+    keyboard = [
+        [InlineKeyboardButton("🔙 Back", callback_data="menu_copy")],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+    ]
+
+    await update.message.reply_text(
+        f"👥 *Copy Trader*\n\n"
+        f"👤 Trader: `{trader_address[:10]}...{trader_address[-8:]}`\n\n"
+        f"📊 Enter allocation percentage (1-50):\n"
+        f"💡 _This is the percentage of your balance used for each trade._",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+    return ConversationState.ENTER_ALLOCATION
+
+
+async def view_trader_from_deeplink(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    trader_address: str,
+) -> int:
+    """Show trader profile from deep link."""
+    logger.info(f"Viewing trader profile from deep link: {trader_address}")
+
+    from services.leaderboard_service import LeaderboardService
+    leaderboard_service = LeaderboardService()
+
+    try:
+        profile = await leaderboard_service.get_trader_profile(trader_address)
+
+        if not profile:
+            await update.message.reply_text(
+                "❌ Trader not found.\n\n"
+                "The trader may have been removed or the link is invalid.",
+                parse_mode="Markdown",
+            )
+            from bot.handlers.menu import show_main_menu
+            return await show_main_menu(update, context, send_new=True)
+
+        name = profile.get("name", "Anonymous")
+        pnl = profile.get("pnl", 0)
+        volume = profile.get("volume", 0)
+        rank = profile.get("rank", "N/A")
+        x_username = profile.get("x_username", "")
+        verified = profile.get("verified", False)
+
+        pnl_emoji = "📈" if pnl >= 0 else "📉"
+        verified_badge = "✅ Verified" if verified else ""
+
+        text = (
+            f"👤 *Trader Profile*\n\n"
+            f"*{name}* {verified_badge}\n\n"
+            f"🏆 Rank: `#{rank}`\n"
+            f"{pnl_emoji} P&L: `${pnl:,.2f}`\n"
+            f"💹 Volume: `${volume:,.0f}`\n"
+            f"🔑 Address: `{trader_address[:10]}...{trader_address[-8:]}`\n"
+        )
+
+        if x_username:
+            text += f"🐦 Twitter: @{x_username}\n"
+
+        text += "\n💡 _Tap 'Copy' to start copying this trader's trades._"
+
+        keyboard = [
+            [InlineKeyboardButton("👥 Copy This Trader", callback_data=f"copy_trader_{trader_address}")],
+            [InlineKeyboardButton("🏆 Browse Traders", callback_data="copy_browse")],
+            [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+        ]
+
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to fetch trader profile from deep link: {e}")
+        await update.message.reply_text(
+            "❌ Failed to load trader profile. Please try again.",
+        )
+        from bot.handlers.menu import show_main_menu
+        return await show_main_menu(update, context, send_new=True)
+
+    finally:
+        await leaderboard_service.close()
 
     return ConversationState.SELECT_TRADER
 

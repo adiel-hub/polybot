@@ -221,6 +221,11 @@ async def create_application(db: Database) -> Application:
             ],
             ConversationState.SELECT_TRADER: [
                 CallbackQueryHandler(handle_copy_callback, pattern="^copy_"),
+                CallbackQueryHandler(handle_copy_callback, pattern="^view_trader_"),
+                CallbackQueryHandler(handle_copy_callback, pattern="^discover_"),
+                CallbackQueryHandler(handle_copy_callback, pattern="^set_category_"),
+                CallbackQueryHandler(handle_copy_callback, pattern="^set_time_"),
+                CallbackQueryHandler(handle_copy_callback, pattern="^set_sort_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],
             ConversationState.ENTER_ALLOCATION: [

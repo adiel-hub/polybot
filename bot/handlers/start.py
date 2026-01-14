@@ -55,6 +55,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             event_id = arg[2:]  # Remove "e_" prefix
             logger.info(f"✅ User {user.id} started with EVENT deep link: {event_id}")
             context.user_data["pending_event_id"] = event_id
+        elif arg.startswith("ct_"):
+            trader_address = arg[3:]  # Remove "ct_" prefix
+            logger.info(f"✅ User {user.id} started with COPY TRADER deep link: {trader_address}")
+            context.user_data["pending_copy_trader"] = trader_address
+        elif arg.startswith("vt_"):
+            trader_address = arg[3:]  # Remove "vt_" prefix
+            logger.info(f"✅ User {user.id} started with VIEW TRADER deep link: {trader_address}")
+            context.user_data["pending_view_trader"] = trader_address
 
     # Store for use during registration or after login
     context.user_data["referral_code"] = referral_code
