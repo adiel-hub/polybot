@@ -1,8 +1,11 @@
 """Referral program handlers."""
 
+import io
 import logging
+import qrcode
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from telegram.error import BadRequest
 
 from bot.conversations.states import ConversationState
 
@@ -88,11 +91,16 @@ async def show_referral_menu(
     ])
 
     if query:
-        await query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
+        try:
+            await query.edit_message_text(
+                message,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown",
+            )
+        except BadRequest as e:
+            # Ignore "message is not modified" error
+            if "message is not modified" not in str(e).lower():
+                raise
     else:
         await update.message.reply_text(
             message,
@@ -158,19 +166,63 @@ async def handle_create_qr(
     bot_username = context.bot.username
     referral_link = await referral_service.get_referral_link(user.id, bot_username)
 
-    # For now, show a simple message with the link
-    # In the future, this could generate an actual QR code image
-    await query.edit_message_text(
-        f"📱 *QR Code*\n\n"
-        f"Share this link to invite friends:\n\n"
-        f"`{referral_link}`\n\n"
-        f"🔜 QR code generation coming soon!",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 Back", callback_data="menu_rewards")],
-            [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
-        ]),
+    # Generate QR code
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
     )
+    qr.add_data(referral_link)
+    qr.make(fit=True)
+
+    # Create an image from the QR code
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    # Save to bytes buffer
+    bio = io.BytesIO()
+    bio.name = 'referral_qr.png'
+    img.save(bio, 'PNG')
+    bio.seek(0)
+
+    # Send the QR code image
+    caption = (
+        f"📱 *Your Referral QR Code*\n\n"
+        f"Share this QR code to invite friends!\n\n"
+        f"🔗 Link: `{referral_link}`"
+    )
+
+    try:
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=bio,
+            caption=caption,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back", callback_data="menu_rewards")],
+                [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+            ]),
+        )
+
+        # Delete the original message to keep chat clean
+        try:
+            await query.message.delete()
+        except BadRequest:
+            # Message might already be deleted, ignore
+            pass
+
+    except Exception as e:
+        logger.error(f"Failed to send QR code: {e}")
+        await query.edit_message_text(
+            f"❌ *Error*\n\n"
+            f"Failed to generate QR code. Please try again.\n\n"
+            f"Your referral link: `{referral_link}`",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back", callback_data="menu_rewards")],
+                [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+            ]),
+        )
 
     return ConversationState.REFERRAL_QR
 
