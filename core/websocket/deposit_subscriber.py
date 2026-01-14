@@ -270,6 +270,12 @@ class DepositSubscriber:
             if to_address.lower() not in self._wallet_addresses:
                 return
 
+            # Ignore transfers from CLOB exchange contracts (these are sale proceeds, not deposits)
+            exchange_addresses = {addr.lower() for addr in CLOB_CONTRACTS.values()}
+            if from_address.lower() in exchange_addresses:
+                logger.debug(f"Ignoring transfer from exchange contract {from_address[:10]}... (sale proceeds)")
+                return
+
             # Decode amount from data (uint256)
             amount_wei = int(data_hex, 16)
             amount = amount_wei / (10 ** USDC_DECIMALS)
