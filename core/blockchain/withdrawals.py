@@ -144,9 +144,24 @@ class WithdrawalManager:
                             error=f"Gas sponsorship failed: {sponsor_result.error}",
                         )
                     logger.info(f"Gas sponsored successfully: {sponsor_result.tx_hash}")
-                    # Wait a moment for the gas transfer to be mined
+
+                    # Wait for gas transfer to be mined (up to 60 seconds)
                     import asyncio
-                    await asyncio.sleep(3)
+                    for i in range(30):  # 30 attempts * 2 seconds = 60 seconds max
+                        await asyncio.sleep(2)
+                        try:
+                            receipt = self.w3.eth.get_transaction_receipt(sponsor_result.tx_hash)
+                            if receipt and receipt.status == 1:
+                                logger.info(f"Gas transfer confirmed in block {receipt.blockNumber}")
+                                break
+                        except Exception:
+                            pass  # Transaction not yet mined
+                    else:
+                        logger.warning("Gas transfer taking longer than expected, proceeding anyway")
+
+                    # Verify user now has POL
+                    new_balance = self.w3.eth.get_balance(sender_address) / 1e18
+                    logger.info(f"User POL balance after sponsorship: {new_balance:.6f} POL")
                 else:
                     return WithdrawalResult(
                         success=False,
