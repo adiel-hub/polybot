@@ -24,6 +24,13 @@ async def show_main_menu(
     logger.info(f"send_new parameter: {send_new}")
     logger.info(f"user_data keys: {list(context.user_data.keys())}")
 
+    # Check for pending event deep link (multi-outcome events)
+    pending_event_id = context.user_data.pop("pending_event_id", None)
+    if pending_event_id:
+        logger.info(f"✅ FOUND pending_event_id! Redirecting to event options: {pending_event_id}")
+        from bot.handlers.markets import show_event_options_from_deeplink
+        return await show_event_options_from_deeplink(update, context, pending_event_id)
+
     # Check for pending market deep link
     pending_market_id = context.user_data.pop("pending_market_id", None)
     logger.info(f"pending_market_id from user_data: {pending_market_id}")

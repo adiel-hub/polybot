@@ -51,6 +51,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
                 # It's a full condition_id (backward compatibility)
                 market_id = short_or_full_id
                 logger.info(f"✅ Using full condition_id: {market_id[:20]}...")
+        elif arg.startswith("e_"):
+            event_id = arg[2:]  # Remove "e_" prefix
+            logger.info(f"✅ User {user.id} started with EVENT deep link: {event_id}")
+            context.user_data["pending_event_id"] = event_id
 
     # Store for use during registration or after login
     context.user_data["referral_code"] = referral_code

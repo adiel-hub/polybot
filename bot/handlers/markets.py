@@ -191,10 +191,11 @@ async def handle_browse_callback(
                 polymarket_url = f"https://polymarket.com/market/{market.slug}"
                 polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
-            # Check if this is part of a multi-outcome event
+            # Check if this is part of a multi-outcome event - add clickable link
             options_html = ""
             if hasattr(market, 'outcomes_count') and market.outcomes_count > 1 and market.event_id:
-                options_html = f' │ 🎯 +{market.outcomes_count - 1} more'
+                event_link = f"https://t.me/{bot_username}?start=e_{market.event_id}"
+                options_html = f' │ 🎯 <a href="{event_link}">+{market.outcomes_count - 1} Options</a>'
 
             text += (
                 f"{i}) {market.question[:50]}{'...' if len(market.question) > 50 else ''}\n"
@@ -205,26 +206,6 @@ async def handle_browse_callback(
 
     # Pagination navigation
     keyboard = []
-
-    # Add buttons for multi-outcome events (max 2 to avoid clutter)
-    multi_outcome_events = {}
-    for market in tradeable_markets:
-        if hasattr(market, 'outcomes_count') and market.outcomes_count > 1 and market.event_id:
-            if market.event_id not in multi_outcome_events:
-                multi_outcome_events[market.event_id] = market
-
-    event_buttons = []
-    for event_id, market in list(multi_outcome_events.items())[:2]:
-        event_name = (market.event_title or "Event")[:20]
-        event_buttons.append(
-            InlineKeyboardButton(
-                f"🎯 {event_name}... (+{market.outcomes_count})",
-                callback_data=f"event_options_{event_id}_page_1"
-            )
-        )
-    if event_buttons:
-        keyboard.append(event_buttons)
-
     nav_row = []
 
     if page > 1:
@@ -500,6 +481,113 @@ async def show_event_options(
     except BadRequest as e:
         if "message is not modified" not in str(e):
             raise
+
+    return ConversationState.EVENT_OPTIONS
+
+
+async def show_event_options_from_deeplink(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    event_id: str,
+    page: int = 1,
+) -> int:
+    """Show all outcomes for a multi-outcome event from a deep link."""
+    market_service = context.bot_data["market_service"]
+
+    # Fetch all markets for this event
+    markets = await market_service.get_event_markets(event_id)
+
+    if not markets:
+        await update.message.reply_text(
+            "❌ Event not found or has no tradeable outcomes.",
+            reply_markup=get_back_keyboard("menu_browse"),
+        )
+        return ConversationState.BROWSE_RESULTS
+
+    # Filter active markets and paginate
+    tradeable_markets = filter_active_markets(markets)
+
+    # Get event title from first market
+    event_title = markets[0].event_title or "Event Options"
+    total_outcomes = len(tradeable_markets)
+
+    # Pagination: 5 per page
+    per_page = 5
+    total_pages = max(1, (total_outcomes + per_page - 1) // per_page)
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    page_markets = tradeable_markets[start_idx:end_idx]
+
+    # Store markets in context
+    context.user_data["browse_markets"] = {m.condition_id: m for m in tradeable_markets}
+
+    # Build message
+    text = f"🎯 <b>{event_title[:50]}{'...' if len(event_title) > 50 else ''}</b>\n"
+    text += f"📊 {total_outcomes} tradeable outcomes │ Page {page}/{total_pages}\n\n"
+
+    bot_username = context.bot.username
+
+    if not page_markets:
+        text += "<i>No tradeable outcomes on this page.</i>\n"
+    else:
+        for i, market in enumerate(page_markets, start_idx + 1):
+            yes_cents = int(market.yes_price * 100)
+
+            # Build trade deep link with short ID
+            short_id = generate_short_id(market.condition_id)
+            trade_link = f"https://t.me/{bot_username}?start=m_{short_id}"
+
+            # Store mapping for lookup
+            if "market_short_ids" not in context.bot_data:
+                context.bot_data["market_short_ids"] = {}
+            context.bot_data["market_short_ids"][short_id] = market.condition_id
+
+            # Extract outcome name from question
+            outcome_name = market.question
+            if outcome_name.startswith("Will "):
+                outcome_name = outcome_name[5:]
+            if outcome_name.endswith("?"):
+                outcome_name = outcome_name[:-1]
+            outcome_name = outcome_name[:40] + ("..." if len(outcome_name) > 40 else "")
+
+            trade_html = f'<a href="{trade_link}">Trade</a>'
+
+            text += (
+                f"{i}. {outcome_name}\n"
+                f"   └ ✅ <code>{yes_cents}c</code> │ 💧 <code>${market.liquidity:,.0f}</code> │ {trade_html}\n\n"
+            )
+
+    # Pagination navigation
+    keyboard = []
+    nav_row = []
+
+    if page > 1:
+        nav_row.append(
+            InlineKeyboardButton("◀️ Prev", callback_data=f"event_options_{event_id}_page_{page-1}")
+        )
+
+    nav_row.append(
+        InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data="noop")
+    )
+
+    if page < total_pages:
+        nav_row.append(
+            InlineKeyboardButton("Next ▶️", callback_data=f"event_options_{event_id}_page_{page+1}")
+        )
+
+    if nav_row:
+        keyboard.append(nav_row)
+
+    keyboard.append([
+        InlineKeyboardButton("🔙 Back", callback_data="menu_browse"),
+        InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
+    ])
+
+    await update.message.reply_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
 
     return ConversationState.EVENT_OPTIONS
 
