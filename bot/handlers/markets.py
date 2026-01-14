@@ -29,15 +29,24 @@ def is_market_expired(market) -> bool:
 
 def is_market_tradeable(market) -> bool:
     """Check if a market has liquidity and is tradeable."""
-    return not (market.volume_24h == 0 and market.total_volume == 0 and market.liquidity == 0)
+    # Must have liquidity to be tradeable
+    return market.liquidity > 0
 
 
-def filter_active_markets(markets: list) -> list:
-    """Filter out expired and non-tradeable markets."""
-    return [
+def filter_active_markets(markets: list, sort_by_volume: bool = False) -> list:
+    """Filter out expired and non-tradeable markets.
+
+    Args:
+        markets: List of markets to filter
+        sort_by_volume: If True, sort by total_volume descending
+    """
+    filtered = [
         m for m in markets
         if not is_market_expired(m) and is_market_tradeable(m)
     ]
+    if sort_by_volume:
+        filtered.sort(key=lambda m: m.total_volume, reverse=True)
+    return filtered
 
 
 async def show_browse_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -403,8 +412,8 @@ async def show_event_options(
         )
         return ConversationState.BROWSE_RESULTS
 
-    # Filter active markets and paginate
-    tradeable_markets = filter_active_markets(markets)
+    # Filter active markets (with liquidity) and sort by volume
+    tradeable_markets = filter_active_markets(markets, sort_by_volume=True)
 
     # Get event title from first market
     event_title = markets[0].event_title or "Event Options"
@@ -523,8 +532,8 @@ async def show_event_options_from_deeplink(
         )
         return ConversationState.BROWSE_RESULTS
 
-    # Filter active markets and paginate
-    tradeable_markets = filter_active_markets(markets)
+    # Filter active markets (with liquidity) and sort by volume
+    tradeable_markets = filter_active_markets(markets, sort_by_volume=True)
 
     # Get event title from first market
     event_title = markets[0].event_title or "Event Options"
