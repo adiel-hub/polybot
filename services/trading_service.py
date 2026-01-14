@@ -12,6 +12,7 @@ from database.repositories import (
 from database.models import Order, Position
 from core.polymarket import PolymarketCLOB
 from core.wallet import KeyEncryption
+from config.constants import MIN_ORDER_AMOUNT
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,20 @@ class TradingService:
         Returns:
             Dict with order_id, status, error
         """
+        # Calculate order value for validation
+        if order_type.upper() == "MARKET":
+            order_value = amount
+        else:
+            # Limit order: amount is shares, total cost = shares * price
+            order_value = amount * price if price else amount
+
+        # Validate minimum order amount (Polymarket requires $1 minimum)
+        if order_value < MIN_ORDER_AMOUNT:
+            return {
+                "success": False,
+                "error": f"Minimum order is ${MIN_ORDER_AMOUNT:.0f}. Your order: ${order_value:.2f}",
+            }
+
         # Check balance
         wallet = await self.wallet_repo.get_by_user_id(user_id)
         if not wallet:

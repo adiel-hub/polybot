@@ -139,7 +139,13 @@ async def handle_browse_callback(
     # Get bot username for deep links
     bot_username = context.bot.username
 
-    for i, market in enumerate(markets, 1):
+    # Filter out non-tradeable markets (0 volume AND 0 liquidity)
+    tradeable_markets = [
+        m for m in markets
+        if not (m.volume_24h == 0 and m.total_volume == 0 and m.liquidity == 0)
+    ]
+
+    for i, market in enumerate(tradeable_markets, 1):
         # Format prices as percentages
         yes_cents = int(market.yes_price * 100)
         no_cents = int(market.no_price * 100)
@@ -376,7 +382,13 @@ async def handle_search_input(
                 # Get bot username for deep links
                 bot_username = context.bot.username
 
-                for i, m in enumerate(markets[:5], 1):
+                # Filter out non-tradeable markets
+                tradeable_markets = [
+                    m for m in markets[:5]
+                    if not (m.volume_24h == 0 and m.total_volume == 0 and m.liquidity == 0)
+                ]
+
+                for i, m in enumerate(tradeable_markets, 1):
                     yes_cents = int(m.yes_price * 100)
                     no_cents = int(m.no_price * 100)
 
@@ -612,7 +624,13 @@ async def handle_search_input(
     # Get bot username for deep links
     bot_username = context.bot.username
 
-    for i, market in enumerate(markets, 1):
+    # Filter out non-tradeable markets (0 volume AND 0 liquidity)
+    tradeable_markets = [
+        m for m in markets
+        if not (m.volume_24h == 0 and m.total_volume == 0 and m.liquidity == 0)
+    ]
+
+    for i, market in enumerate(tradeable_markets, 1):
         yes_cents = int(market.yes_price * 100)
         no_cents = int(market.no_price * 100)
 

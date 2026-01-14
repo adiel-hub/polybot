@@ -13,6 +13,9 @@ MIN_DEPOSIT = 1.0
 # Minimum withdrawal amount (in USDC)
 MIN_WITHDRAWAL = 1.0
 
+# Minimum order amount (Polymarket requirement)
+MIN_ORDER_AMOUNT = 1.0
+
 # Maximum withdrawal amount per transaction (in USDC)
 MAX_WITHDRAWAL = 10000.0
 

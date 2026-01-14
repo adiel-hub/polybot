@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 from bot.conversations.states import ConversationState
 from bot.keyboards.common import get_cancel_keyboard
 from bot.handlers.menu import show_main_menu
+from config.constants import MIN_ORDER_AMOUNT
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,26 @@ async def handle_amount_input(
     except ValueError as e:
         await update.message.reply_text(
             f"❌ Invalid amount: {e}. Please enter a positive number."
+        )
+        return ConversationState.ENTER_AMOUNT
+
+    order_type = context.user_data.get("order_type", "MARKET")
+    limit_price = context.user_data.get("limit_price")
+
+    # Calculate actual order value for minimum check
+    if order_type == "MARKET":
+        order_value = amount
+    else:
+        # Limit order: amount is shares, total cost = shares * price
+        order_value = amount * limit_price if limit_price else amount
+
+    # Validate minimum order amount (Polymarket requires $1 minimum)
+    if order_value < MIN_ORDER_AMOUNT:
+        await update.message.reply_text(
+            f"❌ Minimum order value is `${MIN_ORDER_AMOUNT:.0f}`.\n"
+            f"Your order: `${order_value:.2f}`\n\n"
+            f"Please enter a larger amount.",
+            parse_mode="Markdown",
         )
         return ConversationState.ENTER_AMOUNT
 
