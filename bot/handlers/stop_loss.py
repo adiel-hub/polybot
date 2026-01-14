@@ -144,6 +144,12 @@ async def handle_stop_loss_callback(
         stop_loss_repo = StopLossRepository(db)
         await stop_loss_repo.deactivate(sl_id)
 
+        # Remove from real-time monitoring
+        ws_service = context.bot_data.get("ws_service")
+        if ws_service:
+            await ws_service.remove_stop_loss(sl_id)
+            logger.info(f"Removed stop loss {sl_id} from real-time monitoring")
+
         await query.edit_message_text("✅ Stop loss removed.")
         return await show_stop_loss_menu(update, context)
 
@@ -252,13 +258,19 @@ async def confirm_stop_loss(
         return ConversationState.MAIN_MENU
 
     try:
-        await stop_loss_repo.create(
+        stop_loss = await stop_loss_repo.create(
             user_id=db_user.id,
             position_id=position_id,
             token_id=position.token_id,
             trigger_price=trigger_price,
             sell_percentage=sell_percentage,
         )
+
+        # Add to real-time monitoring
+        ws_service = context.bot_data.get("ws_service")
+        if ws_service:
+            await ws_service.add_stop_loss(stop_loss)
+            logger.info(f"Added stop loss {stop_loss.id} to real-time monitoring")
 
         await query.edit_message_text(
             f"✅ *Stop Loss Created!*\n\n"
