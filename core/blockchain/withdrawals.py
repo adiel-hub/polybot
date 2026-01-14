@@ -129,6 +129,30 @@ class WithdrawalManager:
                     error=f"Insufficient balance: ${balance_usdc:.2f} < ${amount:.2f}",
                 )
 
+            # Check if user has POL for gas, if not sponsor it
+            user_pol_balance = self.w3.eth.get_balance(sender_address) / 1e18
+            required_pol = 0.02  # Estimate ~0.02 POL needed for withdrawal gas
+
+            if user_pol_balance < required_pol:
+                logger.info(f"User has insufficient POL ({user_pol_balance:.4f}), sponsoring gas")
+                if self.gas_sponsor_account:
+                    # Sponsor gas for the user
+                    sponsor_result = await self.sponsor_gas(sender_address, required_pol)
+                    if not sponsor_result.success:
+                        return WithdrawalResult(
+                            success=False,
+                            error=f"Gas sponsorship failed: {sponsor_result.error}",
+                        )
+                    logger.info(f"Gas sponsored successfully: {sponsor_result.tx_hash}")
+                    # Wait a moment for the gas transfer to be mined
+                    import asyncio
+                    await asyncio.sleep(3)
+                else:
+                    return WithdrawalResult(
+                        success=False,
+                        error="Insufficient POL for gas and no gas sponsor configured",
+                    )
+
             # Convert amount to token units
             amount_units = int(amount * (10 ** USDC_DECIMALS))
 
