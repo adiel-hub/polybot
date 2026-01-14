@@ -129,6 +129,9 @@ async def handle_browse_callback(
         "15m": "⏱️ 15m Up or Down",
     }
 
+    # Pagination setup
+    total_pages = 5  # Assume 5 pages max
+
     text = f"💹 *Market Search - {category_names.get(category, category.title())}*\n"
     text += f"📄 Page {page}/{total_pages}\n\n"
 
@@ -153,8 +156,7 @@ async def handle_browse_callback(
             )
         ])
 
-    # Pagination
-    total_pages = 5  # Assume 5 pages max
+    # Pagination navigation
     nav_row = []
 
     if page > 1:
