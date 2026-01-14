@@ -654,20 +654,38 @@ async def confirm_sell(
             )
         else:
             error_msg = result.get('error', 'Unknown error')
-            text = (
-                f"❌ *Sell Order Failed*\n\n"
-                f"⚠️ Error: {error_msg}\n\n"
-                f"🔄 Please try again."
-            )
 
-            # Add deposit button if insufficient balance (for gas fees)
-            if "Insufficient balance" in error_msg:
+            # Check if it's an allowance error (needs CTF approval for selling)
+            if "not enough balance / allowance" in error_msg.lower() or "allowance" in error_msg.lower():
+                text = (
+                    f"❌ *Trading Permission Required*\n\n"
+                    f"⚠️ You need to approve the exchange to transfer your position shares.\n\n"
+                    f"💡 This is a one-time approval for selling positions.\n\n"
+                    f"📝 Please contact support to enable selling, or try depositing POL for gas fees and try again."
+                )
+                keyboard = [
+                    [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+            elif "Insufficient balance" in error_msg:
+                # Insufficient balance for gas fees
+                text = (
+                    f"❌ *Sell Order Failed*\n\n"
+                    f"⚠️ Error: {error_msg}\n\n"
+                    f"🔄 Please deposit funds and try again."
+                )
                 keyboard = [
                     [InlineKeyboardButton("💳 Deposit Funds", callback_data="wallet_deposit")],
                     [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
             else:
+                # Generic error
+                text = (
+                    f"❌ *Sell Order Failed*\n\n"
+                    f"⚠️ Error: {error_msg}\n\n"
+                    f"🔄 Please try again."
+                )
                 reply_markup = None
 
             await query.edit_message_text(
