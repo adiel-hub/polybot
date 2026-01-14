@@ -259,6 +259,14 @@ class Database:
         if "total_claimed" not in columns:
             await conn.execute("ALTER TABLE users ADD COLUMN total_claimed REAL DEFAULT 0.0")
 
+        # Add 2FA columns to users table if they don't exist
+        if "totp_secret" not in columns:
+            await conn.execute("ALTER TABLE users ADD COLUMN totp_secret BLOB")
+        if "totp_secret_salt" not in columns:
+            await conn.execute("ALTER TABLE users ADD COLUMN totp_secret_salt BLOB")
+        if "totp_verified_at" not in columns:
+            await conn.execute("ALTER TABLE users ADD COLUMN totp_verified_at TIMESTAMP")
+
         # Create indexes for referral columns (safe to run even if they exist)
         # Note: UNIQUE constraint is enforced via unique index
         await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)")

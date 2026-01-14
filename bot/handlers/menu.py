@@ -112,17 +112,12 @@ async def show_main_menu(
                 ],
             ]
 
-            logger.info(f"✅ Sending market detail message to user {user.id}")
-            logger.info(f"Message text length: {len(text)} chars")
-
             await update.message.reply_text(
                 text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="Markdown",
+                disable_web_page_preview=True,
             )
-
-            logger.info(f"✅ Market detail message sent successfully!")
-            logger.info(f"✅ Returning ConversationState.MARKET_DETAIL")
 
             return ConversationState.MARKET_DETAIL
         else:

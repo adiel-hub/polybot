@@ -298,6 +298,7 @@ async def show_market_detail(
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
+        disable_web_page_preview=True,
     )
 
     return ConversationState.MARKET_DETAIL
@@ -457,6 +458,7 @@ async def handle_search_input(
                         text,
                         reply_markup=InlineKeyboardMarkup(keyboard),
                         parse_mode="Markdown",
+                        disable_web_page_preview=True,
                     )
 
                     return ConversationState.MARKET_DETAIL
@@ -525,6 +527,7 @@ async def handle_search_input(
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown",
+            disable_web_page_preview=True,
         )
 
         return ConversationState.MARKET_DETAIL
