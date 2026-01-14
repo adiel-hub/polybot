@@ -195,12 +195,18 @@ async def handle_position_callback(
     message_lines.append("")
     message_lines.append(f"📊 Shares: `{position.size:.4f}`")
     message_lines.append(f"💰 Entry Price: `${position.average_entry_price:.4f}` ({position.average_entry_price * 100:.1f}c)")
-    message_lines.append(f"📈 Current Price: `${position.current_price:.4f}` ({position.current_price * 100:.1f}c)")
+
+    # Handle None current price
+    if position.current_price is not None:
+        message_lines.append(f"📈 Current Price: `${position.current_price:.4f}` ({position.current_price * 100:.1f}c)")
+    else:
+        message_lines.append(f"📈 Current Price: _Updating..._")
+
     message_lines.append("")
 
     # Value calculation
     cost_basis = position.size * position.average_entry_price
-    current_value = position.current_value
+    current_value = position.current_value if position.current_value is not None else cost_basis
     message_lines.append(f"💵 Cost Basis: `${cost_basis:.2f}`")
     message_lines.append(f"💎 Current Value: `${current_value:.2f}`")
 
@@ -211,13 +217,16 @@ async def handle_position_callback(
     message_lines.append("")
 
     pnl = position.unrealized_pnl or 0
-    pnl_pct = position.pnl_percentage
+    pnl_pct = position.pnl_percentage if position.pnl_percentage is not None else 0
     pnl_sign = "+" if pnl >= 0 else ""
 
-    if pnl >= 0:
-        message_lines.append(f"🟢 Unrealized P&L: `{pnl_sign}${pnl:.2f}` ({pnl_sign}{pnl_pct:.1f}%)")
+    if position.current_price is not None:
+        if pnl >= 0:
+            message_lines.append(f"🟢 Unrealized P&L: `{pnl_sign}${pnl:.2f}` ({pnl_sign}{pnl_pct:.1f}%)")
+        else:
+            message_lines.append(f"🔴 Unrealized P&L: `${pnl:.2f}` ({pnl_pct:.1f}%)")
     else:
-        message_lines.append(f"🔴 Unrealized P&L: `${pnl:.2f}` ({pnl_pct:.1f}%)")
+        message_lines.append(f"⏳ P&L: _Calculating..._")
 
     # Max profit (to $1.00)
     if position.average_entry_price < 1.0:
