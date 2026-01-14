@@ -183,8 +183,7 @@ async def handle_position_callback(
     ]
 
     market_question = position.market_question or "Unknown Market"
-    if len(market_question) > 60:
-        market_question = market_question[:60] + "..."
+    # Show full market question without truncation
     message_lines.append(f"_{market_question}_")
     message_lines.append(f"🎲 Outcome: *{position.outcome}*")
     message_lines.append("")
