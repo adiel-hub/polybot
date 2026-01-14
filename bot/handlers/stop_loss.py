@@ -111,8 +111,9 @@ async def handle_stop_loss_callback(
     callback_data = query.data
     db = context.bot_data["db"]
 
-    if callback_data.startswith("sl_add_"):
-        position_id = int(callback_data.replace("sl_add_", ""))
+    # Handle both "sl_add_" and "stoploss_" patterns (from portfolio)
+    if callback_data.startswith("sl_add_") or callback_data.startswith("stoploss_"):
+        position_id = int(callback_data.replace("sl_add_", "").replace("stoploss_", ""))
         context.user_data["sl_position_id"] = position_id
 
         position_repo = PositionRepository(db)
@@ -137,8 +138,9 @@ async def handle_stop_loss_callback(
 
         return ConversationState.ENTER_TRIGGER_PRICE
 
-    elif callback_data.startswith("sl_remove_"):
-        sl_id = int(callback_data.replace("sl_remove_", ""))
+    # Handle both "sl_remove_" and "remove_stoploss_" patterns (from portfolio)
+    elif callback_data.startswith("sl_remove_") or callback_data.startswith("remove_stoploss_"):
+        sl_id = int(callback_data.replace("sl_remove_", "").replace("remove_stoploss_", ""))
         stop_loss_repo = StopLossRepository(db)
         await stop_loss_repo.deactivate(sl_id)
 
