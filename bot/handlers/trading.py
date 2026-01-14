@@ -126,7 +126,40 @@ async def handle_amount_input(
 
     context.user_data["amount"] = amount
 
-    # Show confirmation
+    # Get user settings to check trading mode
+    user_service = context.bot_data["user_service"]
+    db_user = await user_service.get_user(update.effective_user.id)
+    if not db_user:
+        await update.message.reply_text("❌ User not found. Please /start again.")
+        return ConversationState.MAIN_MENU
+
+    settings = await user_service.get_user_settings(db_user.id)
+    trading_mode = settings.get("trading_mode", "standard")
+    threshold = settings.get("fast_mode_threshold", 100.0)
+
+    # Validate trading mode and default to standard (safest) if invalid
+    valid_modes = ["standard", "fast", "ludicrous"]
+    if trading_mode not in valid_modes:
+        trading_mode = "standard"
+
+    # Determine if confirmation is needed based on trading mode
+    needs_confirmation = (
+        trading_mode == "standard" or
+        (trading_mode == "fast" and amount > threshold)
+    )
+
+    # If no confirmation needed, execute immediately
+    if not needs_confirmation:
+        # Determine mode message
+        if trading_mode == "ludicrous":
+            mode_message = "🚀 *Ludicrous Mode* - Order fired immediately!"
+        else:  # fast mode, below threshold
+            mode_message = f"⚡ *Fast Mode* - Order under `${threshold:.0f}`, executing instantly!"
+
+        # Execute order immediately
+        return await _execute_order_internal(update, context, db_user, mode_message)
+
+    # Show confirmation (standard mode or fast mode above threshold)
     market = context.user_data.get("current_market", {})
     order_type = context.user_data.get("order_type", "MARKET")
     outcome = context.user_data.get("outcome", "YES")
@@ -175,23 +208,24 @@ async def handle_amount_input(
     return ConversationState.CONFIRM_ORDER
 
 
-async def confirm_order(
+async def _execute_order_internal(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
+    db_user,
+    mode_message: str = None,
 ) -> int:
-    """Execute the confirmed order."""
-    query = update.callback_query
-    await query.answer()
+    """Internal helper to execute order placement.
 
-    user = update.effective_user
+    Args:
+        update: Telegram update object
+        context: Bot context
+        db_user: Database user object
+        mode_message: Optional message to prepend (e.g., "🚀 Ludicrous Mode - Order fired immediately!")
+
+    Returns:
+        ConversationState for next state
+    """
     trading_service = context.bot_data["trading_service"]
-    user_service = context.bot_data["user_service"]
-
-    # Get user
-    db_user = await user_service.get_user(user.id)
-    if not db_user:
-        await query.edit_message_text("❌ User not found. Please /start again.")
-        return ConversationState.MAIN_MENU
 
     # Get order details from context
     market = context.user_data.get("current_market", {})
@@ -201,7 +235,13 @@ async def confirm_order(
     limit_price = context.user_data.get("limit_price")
     token_id = context.user_data.get("token_id")
 
-    await query.edit_message_text("⏳ Submitting order...")
+    # Determine if we're editing a message or sending new one
+    if update.callback_query:
+        message_handler = update.callback_query.edit_message_text
+    else:
+        message_handler = update.message.reply_text
+
+    await message_handler("⏳ Submitting order...")
 
     try:
         result = await trading_service.place_order(
@@ -217,13 +257,20 @@ async def confirm_order(
 
         if result.get("success"):
             # Build enhanced order confirmation message
-            message_lines = [
+            message_lines = []
+
+            # Add mode message if provided
+            if mode_message:
+                message_lines.append(mode_message)
+                message_lines.append("")
+
+            message_lines.extend([
                 "✅ *Trade Executed Successfully!*",
                 "",
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                 "📋 *Order Details*",
                 "",
-            ]
+            ])
 
             # Market info
             market_question = market.get("question", "Unknown Market")
@@ -308,17 +355,26 @@ async def confirm_order(
             except Exception as e:
                 logger.error(f"Failed to get balance: {e}")
 
-            await query.edit_message_text(
+            await message_handler(
                 "\n".join(message_lines),
                 parse_mode="Markdown",
             )
         else:
             error_msg = result.get('error', 'Unknown error')
-            text = (
-                f"❌ *Order Failed*\n\n"
-                f"⚠️ Error: {error_msg}\n\n"
+            error_lines = []
+
+            # Add mode message if provided
+            if mode_message:
+                error_lines.append(mode_message)
+                error_lines.append("")
+
+            error_lines.extend([
+                f"❌ *Order Failed*\n",
+                f"⚠️ Error: {error_msg}\n",
                 f"🔄 Please try again."
-            )
+            ])
+
+            text = "\n".join(error_lines)
 
             # Add deposit button if insufficient balance
             if "Insufficient balance" in error_msg:
@@ -330,7 +386,7 @@ async def confirm_order(
             else:
                 reply_markup = None
 
-            await query.edit_message_text(
+            await message_handler(
                 text,
                 reply_markup=reply_markup,
                 parse_mode="Markdown",
@@ -338,7 +394,7 @@ async def confirm_order(
 
     except Exception as e:
         logger.error(f"Order execution failed: {e}")
-        await query.edit_message_text(
+        await message_handler(
             f"❌ Order failed: {str(e)}\n\n🔄 Please try again."
         )
 
@@ -347,6 +403,27 @@ async def confirm_order(
         context.user_data.pop(key, None)
 
     return await show_main_menu(update, context, send_new=True)
+
+
+async def confirm_order(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Execute the confirmed order (callback from confirmation button)."""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    user_service = context.bot_data["user_service"]
+
+    # Get user
+    db_user = await user_service.get_user(user.id)
+    if not db_user:
+        await query.edit_message_text("❌ User not found. Please /start again.")
+        return ConversationState.MAIN_MENU
+
+    # Execute order using internal helper
+    return await _execute_order_internal(update, context, db_user)
 
 
 async def handle_sell_position(
