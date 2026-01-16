@@ -8,6 +8,7 @@ from bot.conversations.states import ConversationState
 from bot.keyboards.common import get_cancel_keyboard
 from bot.handlers.menu import show_main_menu
 from config.constants import MIN_ORDER_AMOUNT
+from core.images import generate_trade_card
 
 logger = logging.getLogger(__name__)
 
@@ -746,9 +747,33 @@ async def confirm_sell(
                 message_lines.append("")
                 message_lines.append("🎉 _Your position has been closed!_")
 
+            # Store trade data for sharing
+            entry_price = sell_position.get('average_entry_price', 0)
+            cost_basis = shares_to_sell * entry_price if entry_price > 0 else 0
+            profit_loss = sale_value - cost_basis if cost_basis > 0 else 0
+            roi = (profit_loss / cost_basis) * 100 if cost_basis > 0 else 0
+
+            context.user_data["last_trade"] = {
+                "market_question": sell_position.get('market_question', 'Unknown Market'),
+                "outcome": sell_position['outcome'],
+                "entry_price": entry_price,
+                "exit_price": sale_price,
+                "size": shares_to_sell,
+                "pnl": profit_loss,
+                "pnl_percentage": roi,
+            }
+
+            # Add share button
+            keyboard = [
+                [InlineKeyboardButton("📸 Share Trade", callback_data="share_trade")],
+                [InlineKeyboardButton("📊 Portfolio", callback_data="menu_portfolio")],
+                [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+            ]
+
             await query.edit_message_text(
                 "\n".join(message_lines),
                 parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard),
             )
         else:
             error_msg = result.get('error', 'Unknown error')
@@ -802,4 +827,103 @@ async def confirm_sell(
     context.user_data.pop("sell_position", None)
     context.user_data.pop("sell_shares", None)
 
-    return await show_main_menu(update, context, send_new=True)
+    return ConversationState.MAIN_MENU
+
+
+async def handle_share_trade(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Generate and send a shareable trade card image."""
+    query = update.callback_query
+    await query.answer("Generating trade card...")
+
+    user = update.effective_user
+    user_service = context.bot_data["user_service"]
+    referral_service = context.bot_data["referral_service"]
+
+    # Get last trade data
+    last_trade = context.user_data.get("last_trade")
+    if not last_trade:
+        await query.edit_message_text(
+            "❌ Trade data not found. Please close a position first."
+        )
+        return ConversationState.MAIN_MENU
+
+    # Get user's referral code
+    db_user = await user_service.get_user(user.id)
+    if not db_user:
+        await query.edit_message_text("❌ User not found.")
+        return ConversationState.MAIN_MENU
+
+    # Get referral stats to get code
+    stats = await referral_service.get_referral_stats(db_user.id)
+    referral_code = stats.get('referral_code', '')
+
+    if not referral_code:
+        await user_service.generate_referral_code_for_user(db_user.id)
+        stats = await referral_service.get_referral_stats(db_user.id)
+        referral_code = stats.get('referral_code', 'POLYBOT')
+
+    # Get referral link
+    bot_username = context.bot.username
+    referral_link = await referral_service.get_referral_link(db_user.id, bot_username)
+
+    try:
+        # Generate trade card image
+        image_buffer = generate_trade_card(
+            market_question=last_trade["market_question"],
+            outcome=last_trade["outcome"],
+            entry_price=last_trade["entry_price"],
+            exit_price=last_trade["exit_price"],
+            size=last_trade["size"],
+            pnl=last_trade["pnl"],
+            pnl_percentage=last_trade["pnl_percentage"],
+            referral_code=referral_code,
+            referral_link=referral_link,
+        )
+
+        # Build caption
+        pnl_sign = "+" if last_trade["pnl"] >= 0 else ""
+        pnl_emoji = "🟢" if last_trade["pnl"] >= 0 else "🔴"
+
+        caption = (
+            f"{pnl_emoji} *Trade Closed!*\n\n"
+            f"📊 ROI: `{pnl_sign}{last_trade['pnl_percentage']:.2f}%`\n"
+            f"💰 P&L: `{pnl_sign}${last_trade['pnl']:.2f}`\n\n"
+            f"🔗 Trade on Polymarket with PolyBot!\n"
+            f"👉 {referral_link}"
+        )
+
+        # Send image
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=image_buffer,
+            caption=caption,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📊 Portfolio", callback_data="menu_portfolio")],
+                [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+            ]),
+        )
+
+        # Delete the original message
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+
+        logger.info(f"Trade card generated for user {user.id}")
+
+    except Exception as e:
+        logger.error(f"Failed to generate trade card: {e}")
+        await query.edit_message_text(
+            f"❌ Failed to generate trade card: {str(e)}\n\n"
+            f"Your referral link: `{referral_link}`",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+            ]),
+        )
+
+    return ConversationState.MAIN_MENU

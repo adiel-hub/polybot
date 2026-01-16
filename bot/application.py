@@ -35,6 +35,7 @@ from bot.handlers.trading import (
     handle_sell_percentage,
     handle_sell_amount_input,
     confirm_sell,
+    handle_share_trade,
 )
 from bot.handlers.wallet import (
     show_wallet,
@@ -124,6 +125,7 @@ async def create_application(db: Database) -> Application:
             ConversationState.MAIN_MENU: [
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^noop$"),
+                CallbackQueryHandler(handle_share_trade, pattern="^share_trade$"),
             ],
 
             # Market browsing
