@@ -137,6 +137,25 @@ class Database:
             )
         """)
 
+        # Price alerts table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS price_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token_id TEXT NOT NULL,
+                market_condition_id TEXT NOT NULL,
+                market_question TEXT,
+                outcome TEXT NOT NULL,
+                target_price REAL NOT NULL,
+                direction TEXT NOT NULL CHECK(direction IN ('ABOVE', 'BELOW')),
+                is_active INTEGER DEFAULT 1,
+                triggered_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                note TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
         # Copy traders table
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS copy_traders (

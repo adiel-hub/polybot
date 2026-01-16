@@ -17,6 +17,9 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🛡️ Stop Loss", callback_data="menu_stoploss"),
+            InlineKeyboardButton("🔔 Alerts", callback_data="menu_alerts"),
+        ],
+        [
             InlineKeyboardButton("🎁 Earn Rewards", callback_data="menu_rewards"),
         ],
         [

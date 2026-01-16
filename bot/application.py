@@ -77,6 +77,20 @@ from bot.handlers.referral import (
     handle_create_qr,
     handle_add_to_group,
 )
+from bot.handlers.alerts import (
+    show_alerts_menu,
+    view_alert,
+    flip_alert_direction,
+    start_edit_alert_price,
+    handle_edit_alert_price_input,
+    delete_alert,
+    delete_all_alerts,
+    create_alert_from_market,
+    select_alert_outcome,
+    select_alert_direction,
+    handle_alert_price_button,
+    handle_alert_price_input,
+)
 
 # Admin panel
 from admin import create_admin_handler
@@ -151,6 +165,7 @@ async def create_application(db: Database) -> Application:
             # Market detail and trading
             ConversationState.MARKET_DETAIL: [
                 CallbackQueryHandler(handle_trade_callback, pattern="^trade_"),
+                CallbackQueryHandler(create_alert_from_market, pattern="^create_alert$"),
                 CallbackQueryHandler(show_market_detail, pattern="^market_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],
@@ -311,6 +326,38 @@ async def create_application(db: Database) -> Application:
             ],
             ConversationState.REFERRAL_QR: [
                 CallbackQueryHandler(show_referral_menu, pattern="^menu_rewards$"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+
+            # Price alerts
+            ConversationState.ALERTS_MENU: [
+                CallbackQueryHandler(view_alert, pattern="^alert_view_"),
+                CallbackQueryHandler(delete_all_alerts, pattern="^alerts_delete_all$"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+            ConversationState.ALERTS_VIEW: [
+                CallbackQueryHandler(flip_alert_direction, pattern="^alert_flip_"),
+                CallbackQueryHandler(start_edit_alert_price, pattern="^alert_edit_price_"),
+                CallbackQueryHandler(delete_alert, pattern="^alert_delete_"),
+                CallbackQueryHandler(show_alerts_menu, pattern="^menu_alerts$"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+            ConversationState.ALERTS_EDIT_PRICE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_edit_alert_price_input),
+                CallbackQueryHandler(view_alert, pattern="^alert_view_"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+            ConversationState.ALERTS_CREATE_OUTCOME: [
+                CallbackQueryHandler(select_alert_outcome, pattern="^alert_outcome_"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+            ConversationState.ALERTS_CREATE_DIRECTION: [
+                CallbackQueryHandler(select_alert_direction, pattern="^alert_direction_"),
+                CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
+            ],
+            ConversationState.ALERTS_CREATE_PRICE: [
+                CallbackQueryHandler(handle_alert_price_button, pattern="^alert_price_"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_alert_price_input),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],
         },

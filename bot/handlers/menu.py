@@ -305,6 +305,10 @@ async def handle_menu_callback(
         from bot.handlers.referral import show_referral_menu
         return await show_referral_menu(update, context)
 
+    elif callback_data == "menu_alerts":
+        from bot.handlers.alerts import show_alerts_menu
+        return await show_alerts_menu(update, context)
+
     elif callback_data == "noop":
         # Do nothing for noop buttons
         return ConversationState.MAIN_MENU

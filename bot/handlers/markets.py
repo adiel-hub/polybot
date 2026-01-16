@@ -373,6 +373,9 @@ async def show_market_detail(
             InlineKeyboardButton("📊 Limit No", callback_data="trade_limit_no"),
         ],
         [
+            InlineKeyboardButton("🔔 Set Alert", callback_data="create_alert"),
+        ],
+        [
             InlineKeyboardButton("🔄 Refresh", callback_data=f"market_{condition_id_prefix}"),
             InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
         ],

@@ -7,6 +7,7 @@ from .copy_trader import CopyTrader
 from .deposit import Deposit
 from .withdrawal import Withdrawal
 from .referral import ReferralCommission
+from .price_alert import PriceAlert, AlertDirection
 
 __all__ = [
     "User",
@@ -18,4 +19,6 @@ __all__ = [
     "Deposit",
     "Withdrawal",
     "ReferralCommission",
+    "PriceAlert",
+    "AlertDirection",
 ]
