@@ -91,6 +91,10 @@ from bot.handlers.alerts import (
     handle_alert_price_button,
     handle_alert_price_input,
 )
+from bot.handlers.ai_analysis import (
+    handle_ai_analysis,
+    handle_ai_education,
+)
 
 # Admin panel
 from admin import create_admin_handler
@@ -165,6 +169,7 @@ async def create_application(db: Database) -> Application:
             # Market detail and trading
             ConversationState.MARKET_DETAIL: [
                 CallbackQueryHandler(handle_trade_callback, pattern="^trade_"),
+                CallbackQueryHandler(handle_ai_analysis, pattern="^ai_analysis$"),
                 CallbackQueryHandler(create_alert_from_market, pattern="^create_alert$"),
                 CallbackQueryHandler(show_market_detail, pattern="^market_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),

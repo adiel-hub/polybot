@@ -373,6 +373,7 @@ async def show_market_detail(
             InlineKeyboardButton("📊 Limit No", callback_data="trade_limit_no"),
         ],
         [
+            InlineKeyboardButton("🧠 AI Analysis", callback_data="ai_analysis"),
             InlineKeyboardButton("🔔 Set Alert", callback_data="create_alert"),
         ],
         [
