@@ -747,12 +747,13 @@ async def confirm_sell(
                 message_lines.append("")
                 message_lines.append("🎉 _Your position has been closed!_")
 
-            # Store trade data for sharing
+            # Calculate trade data
             entry_price = sell_position.get('average_entry_price', 0)
             cost_basis = shares_to_sell * entry_price if entry_price > 0 else 0
             profit_loss = sale_value - cost_basis if cost_basis > 0 else 0
             roi = (profit_loss / cost_basis) * 100 if cost_basis > 0 else 0
 
+            # Store trade data for potential re-sharing
             context.user_data["last_trade"] = {
                 "market_question": sell_position.get('market_question', 'Unknown Market'),
                 "outcome": sell_position['outcome'],
@@ -763,18 +764,83 @@ async def confirm_sell(
                 "pnl_percentage": roi,
             }
 
-            # Add share button
-            keyboard = [
-                [InlineKeyboardButton("📸 Share Trade", callback_data="share_trade")],
-                [InlineKeyboardButton("📊 Portfolio", callback_data="menu_portfolio")],
-                [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
-            ]
-
+            # Send text summary first
             await query.edit_message_text(
                 "\n".join(message_lines),
                 parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(keyboard),
             )
+
+            # Automatically generate and send trade card image
+            try:
+                referral_service = context.bot_data["referral_service"]
+
+                # Get user's referral code
+                stats = await referral_service.get_referral_stats(db_user.id)
+                referral_code = stats.get('referral_code', '')
+
+                if not referral_code:
+                    await user_service.generate_referral_code_for_user(db_user.id)
+                    stats = await referral_service.get_referral_stats(db_user.id)
+                    referral_code = stats.get('referral_code', 'POLYBOT')
+
+                # Get referral link
+                bot_username = context.bot.username
+                referral_link = await referral_service.get_referral_link(db_user.id, bot_username)
+
+                # Generate trade card image
+                image_buffer = generate_trade_card(
+                    market_question=sell_position.get('market_question', 'Unknown Market'),
+                    outcome=sell_position['outcome'],
+                    entry_price=entry_price,
+                    exit_price=sale_price,
+                    size=shares_to_sell,
+                    pnl=profit_loss,
+                    pnl_percentage=roi,
+                    referral_code=referral_code,
+                    referral_link=referral_link,
+                )
+
+                # Build caption
+                pnl_sign = "+" if profit_loss >= 0 else ""
+                pnl_emoji = "🟢" if profit_loss >= 0 else "🔴"
+
+                caption = (
+                    f"{pnl_emoji} *Trade Closed!*\n\n"
+                    f"📊 ROI: `{pnl_sign}{roi:.2f}%`\n"
+                    f"💰 P&L: `{pnl_sign}${profit_loss:.2f}`\n\n"
+                    f"🔗 Trade on Polymarket with PolyBot!\n"
+                    f"👉 {referral_link}\n\n"
+                    f"_Forward this image to share your trade!_"
+                )
+
+                # Send trade card image with share instructions
+                await context.bot.send_photo(
+                    chat_id=query.message.chat_id,
+                    photo=image_buffer,
+                    caption=caption,
+                    parse_mode="Markdown",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📤 Share Again", callback_data="share_trade")],
+                        [InlineKeyboardButton("📊 Portfolio", callback_data="menu_portfolio")],
+                        [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+                    ]),
+                )
+
+                logger.info(f"Trade card auto-generated for user {user.id}")
+
+            except Exception as e:
+                logger.error(f"Failed to auto-generate trade card: {e}")
+                # If image generation fails, just show navigation buttons
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text="📸 _Trade card generation failed. You can try again later._",
+                    parse_mode="Markdown",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📸 Try Again", callback_data="share_trade")],
+                        [InlineKeyboardButton("📊 Portfolio", callback_data="menu_portfolio")],
+                        [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+                    ]),
+                )
         else:
             error_msg = result.get('error', 'Unknown error')
 
