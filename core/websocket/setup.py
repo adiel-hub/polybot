@@ -123,6 +123,22 @@ class WebSocketService:
         if self.copy_trade_subscriber:
             await self.copy_trade_subscriber.remove_subscription(subscription_id)
 
+    async def add_alert(self, alert) -> None:
+        """Add a price alert to real-time monitoring."""
+        if self.price_subscriber:
+            await self.price_subscriber.add_alert(alert)
+
+    async def remove_alert(self, alert_id: int) -> None:
+        """Remove a price alert from monitoring."""
+        if self.price_subscriber:
+            await self.price_subscriber.remove_alert(alert_id)
+
+    def get_current_price(self, token_id: str) -> float:
+        """Get current cached price for a token."""
+        if self.price_subscriber:
+            return self.price_subscriber.get_current_price(token_id)
+        return None
+
 
 async def setup_websocket_service(application: Application) -> WebSocketService:
     """

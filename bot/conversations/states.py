@@ -72,3 +72,11 @@ class ConversationState(IntEnum):
     REFERRAL_MENU = auto()
     REFERRAL_CLAIM = auto()
     REFERRAL_QR = auto()
+
+    # Price alerts
+    ALERTS_MENU = auto()
+    ALERTS_VIEW = auto()
+    ALERTS_EDIT_PRICE = auto()
+    ALERTS_CREATE_OUTCOME = auto()
+    ALERTS_CREATE_DIRECTION = auto()
+    ALERTS_CREATE_PRICE = auto()

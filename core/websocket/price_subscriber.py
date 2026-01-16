@@ -10,6 +10,8 @@ from database.repositories import (
     PositionRepository,
     UserRepository,
 )
+from database.repositories.price_alert_repo import PriceAlertRepository
+from database.models import AlertDirection
 from services import TradingService
 from core.wallet import KeyEncryption
 from core.websocket.manager import WebSocketManager
@@ -45,6 +47,7 @@ class PriceSubscriber:
         # Track token prices and subscriptions
         self._token_prices: Dict[str, float] = {}
         self._active_stop_losses: Dict[str, list] = {}  # token_id -> list of stop losses
+        self._active_alerts: Dict[str, list] = {}  # token_id -> list of price alerts
         self._monitored_positions: Set[str] = set()  # token_ids with active positions
 
     async def start(self) -> None:
@@ -94,6 +97,9 @@ class PriceSubscriber:
         # Check stop losses if price dropped
         if old_price is None or price <= old_price:
             await self._check_stop_losses(token_id, price)
+
+        # Check price alerts (both directions)
+        await self._check_alerts(token_id, price, old_price)
 
     async def _update_position_prices(self, token_id: str, price: float) -> None:
         """Update position current prices in database."""
@@ -228,9 +234,10 @@ class PriceSubscriber:
             logger.error(f"Failed to notify user {sl['user_id']}: {e}")
 
     async def _refresh_subscriptions(self) -> None:
-        """Refresh subscriptions based on current stop losses and positions."""
+        """Refresh subscriptions based on current stop losses, alerts and positions."""
         try:
             stop_loss_repo = StopLossRepository(self.db)
+            alert_repo = PriceAlertRepository(self.db)
             position_repo = PositionRepository(self.db)
 
             # Get all active stop losses
@@ -256,6 +263,30 @@ class PriceSubscriber:
                     "sell_percentage": sl.sell_percentage,
                 })
 
+            # Get all active price alerts
+            active_alerts = await alert_repo.get_all_active()
+
+            # Build token -> alerts mapping
+            self._active_alerts.clear()
+
+            for alert in active_alerts:
+                token_id = alert.token_id
+                token_ids.add(token_id)
+
+                if token_id not in self._active_alerts:
+                    self._active_alerts[token_id] = []
+
+                self._active_alerts[token_id].append({
+                    "id": alert.id,
+                    "user_id": alert.user_id,
+                    "token_id": alert.token_id,
+                    "market_question": alert.market_question,
+                    "outcome": alert.outcome,
+                    "target_price": alert.target_price,
+                    "direction": alert.direction,
+                    "note": alert.note,
+                })
+
             # Get all positions with size > 0 for price updates
             conn = await self.db.get_connection()
             cursor = await conn.execute(
@@ -274,9 +305,10 @@ class PriceSubscriber:
                     list(token_ids),
                 )
 
+            alert_count = sum(len(alerts) for alerts in self._active_alerts.values())
             logger.info(
                 f"Subscribed to {len(token_ids)} tokens "
-                f"({len(self._active_stop_losses)} with stop losses)"
+                f"({len(self._active_stop_losses)} with stop losses, {alert_count} alerts)"
             )
 
         except Exception as e:
@@ -316,3 +348,145 @@ class PriceSubscriber:
 
         if self.ws_manager.is_connected("polymarket_market"):
             await self.ws_manager.subscribe("polymarket_market", [token_id])
+
+    # ===== Price Alert Methods =====
+
+    async def _check_alerts(
+        self,
+        token_id: str,
+        current_price: float,
+        old_price: Optional[float],
+    ) -> None:
+        """Check if any price alerts should be triggered."""
+        if token_id not in self._active_alerts:
+            return
+
+        alerts = self._active_alerts.get(token_id, [])
+        alerts_to_remove = []
+
+        for alert in alerts:
+            should_trigger = False
+
+            if alert["direction"] == AlertDirection.ABOVE:
+                # Trigger when price crosses above target
+                if current_price >= alert["target_price"]:
+                    if old_price is None or old_price < alert["target_price"]:
+                        should_trigger = True
+            else:  # BELOW
+                # Trigger when price crosses below target
+                if current_price <= alert["target_price"]:
+                    if old_price is None or old_price > alert["target_price"]:
+                        should_trigger = True
+
+            if should_trigger:
+                await self._trigger_alert(alert, current_price)
+                alerts_to_remove.append(alert["id"])
+
+        # Remove triggered alerts from tracking
+        if alerts_to_remove:
+            self._active_alerts[token_id] = [
+                a for a in self._active_alerts[token_id]
+                if a["id"] not in alerts_to_remove
+            ]
+
+    async def _trigger_alert(
+        self,
+        alert: Dict[str, Any],
+        current_price: float,
+    ) -> None:
+        """Handle a triggered price alert."""
+        logger.info(
+            f"Price alert {alert['id']} triggered: "
+            f"price {current_price} crossed {alert['target_price']} ({alert['direction'].value})"
+        )
+
+        try:
+            # Mark alert as triggered in database
+            alert_repo = PriceAlertRepository(self.db)
+            await alert_repo.mark_triggered(alert["id"])
+
+            # Notify user
+            await self._notify_user_alert(alert, current_price)
+
+        except Exception as e:
+            logger.error(f"Failed to trigger alert {alert['id']}: {e}")
+
+    async def _notify_user_alert(
+        self,
+        alert: Dict[str, Any],
+        current_price: float,
+    ) -> None:
+        """Send notification to user about triggered price alert."""
+        if not self.bot_send_message:
+            return
+
+        try:
+            user_repo = UserRepository(self.db)
+            user = await user_repo.get_by_id(alert["user_id"])
+
+            if user:
+                direction_emoji = "📈" if alert["direction"] == AlertDirection.ABOVE else "📉"
+                direction_text = "rose above" if alert["direction"] == AlertDirection.ABOVE else "dropped below"
+
+                market_question = alert.get("market_question", "Unknown Market")
+                if len(market_question) > 50:
+                    market_question = market_question[:50] + "..."
+
+                message = (
+                    f"🔔 *Price Alert Triggered!*\n\n"
+                    f"📊 Market: _{market_question}_\n"
+                    f"🎯 Outcome: *{alert['outcome']}*\n\n"
+                    f"{direction_emoji} Price {direction_text} `{alert['target_price'] * 100:.1f}c`\n"
+                    f"💰 Current Price: `{current_price * 100:.1f}c`\n"
+                )
+
+                if alert.get("note"):
+                    message += f"\n📝 Note: _{alert['note']}_"
+
+                await self.bot_send_message(
+                    chat_id=user.telegram_id,
+                    text=message,
+                    parse_mode="Markdown",
+                )
+
+                logger.info(f"Alert notification sent to user {user.telegram_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to notify user {alert['user_id']} about alert: {e}")
+
+    async def add_alert(self, alert) -> None:
+        """Add a new price alert to monitoring."""
+        token_id = alert.token_id
+
+        if token_id not in self._active_alerts:
+            self._active_alerts[token_id] = []
+
+        self._active_alerts[token_id].append({
+            "id": alert.id,
+            "user_id": alert.user_id,
+            "token_id": alert.token_id,
+            "market_question": alert.market_question,
+            "outcome": alert.outcome,
+            "target_price": alert.target_price,
+            "direction": alert.direction,
+            "note": alert.note,
+        })
+
+        # Subscribe to this token if not already
+        if self.ws_manager.is_connected("polymarket_market"):
+            await self.ws_manager.subscribe("polymarket_market", [token_id])
+
+        logger.info(f"Added alert {alert.id} for token {token_id}")
+
+    async def remove_alert(self, alert_id: int) -> None:
+        """Remove a price alert from monitoring."""
+        for token_id, alerts in self._active_alerts.items():
+            self._active_alerts[token_id] = [
+                a for a in alerts if a["id"] != alert_id
+            ]
+
+        logger.info(f"Removed alert {alert_id} from monitoring")
+
+    def get_current_price(self, token_id: str) -> Optional[float]:
+        """Get the current cached price for a token."""
+        return self._token_prices.get(token_id)

@@ -150,6 +150,10 @@ async def show_main_menu(
                     InlineKeyboardButton("📊 Limit No", callback_data="trade_limit_no"),
                 ],
                 [
+                    InlineKeyboardButton("🧠 AI Analysis", callback_data="ai_analysis"),
+                    InlineKeyboardButton("🔔 Set Alert", callback_data="create_alert"),
+                ],
+                [
                     InlineKeyboardButton("🔄 Refresh", callback_data=f"market_{pending_market_id[:20]}"),
                     InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
                 ],
@@ -304,6 +308,10 @@ async def handle_menu_callback(
     elif callback_data == "menu_rewards":
         from bot.handlers.referral import show_referral_menu
         return await show_referral_menu(update, context)
+
+    elif callback_data == "menu_alerts":
+        from bot.handlers.alerts import show_alerts_menu
+        return await show_alerts_menu(update, context)
 
     elif callback_data == "noop":
         # Do nothing for noop buttons
