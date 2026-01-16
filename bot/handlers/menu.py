@@ -150,6 +150,10 @@ async def show_main_menu(
                     InlineKeyboardButton("📊 Limit No", callback_data="trade_limit_no"),
                 ],
                 [
+                    InlineKeyboardButton("🧠 AI Analysis", callback_data="ai_analysis"),
+                    InlineKeyboardButton("🔔 Set Alert", callback_data="create_alert"),
+                ],
+                [
                     InlineKeyboardButton("🔄 Refresh", callback_data=f"market_{pending_market_id[:20]}"),
                     InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
                 ],
