@@ -68,9 +68,6 @@ async def handle_ai_analysis(
                 InlineKeyboardButton("🔔 Set Alert", callback_data="create_alert"),
             ],
             [
-                InlineKeyboardButton("🔄 Refresh Analysis", callback_data="ai_analysis"),
-            ],
-            [
                 InlineKeyboardButton("🔙 Back to Market", callback_data=f"market_{market.get('condition_id', '')[:20]}"),
                 InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main"),
             ],
