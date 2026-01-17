@@ -33,3 +33,9 @@ qrcode[pil]
 
 # Two-Factor Authentication
 pyotp
+
+# News Bot - AI Article Generation
+anthropic>=0.40.0
+
+# News Bot - Scheduling
+apscheduler>=3.10.0

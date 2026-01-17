@@ -291,5 +291,24 @@ class Database:
         await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_referrer_id ON users(referrer_id)")
 
+        # Posted markets table (for news bot)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS posted_markets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                condition_id TEXT UNIQUE NOT NULL,
+                event_id TEXT,
+                question TEXT NOT NULL,
+                category TEXT,
+                article_title TEXT,
+                telegram_message_id INTEGER,
+                market_created_at TIMESTAMP,
+                posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                article_tokens_used INTEGER,
+                research_sources TEXT
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_posted_markets_condition_id ON posted_markets(condition_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_posted_markets_posted_at ON posted_markets(posted_at)")
+
         await conn.commit()
         logger.info("Database tables initialized")
