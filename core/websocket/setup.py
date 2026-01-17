@@ -26,10 +26,12 @@ class WebSocketService:
         db: Database,
         encryption: KeyEncryption,
         bot_send_message,
+        bot_username: str = None,
     ):
         self.db = db
         self.encryption = encryption
         self.bot_send_message = bot_send_message
+        self.bot_username = bot_username
 
         # Core components
         self.ws_manager = WebSocketManager()
@@ -48,6 +50,7 @@ class WebSocketService:
             encryption=self.encryption,
             market_ws_url=settings.polymarket_ws_market_url,
             bot_send_message=self.bot_send_message,
+            bot_username=self.bot_username,
         )
         await self.price_subscriber.start()
 
@@ -149,12 +152,16 @@ async def setup_websocket_service(application: Application) -> WebSocketService:
     db = application.bot_data["db"]
     encryption = application.bot_data["encryption"]
 
+    # Get bot username for deep links
+    bot_username = (await application.bot.get_me()).username
+
     # Create bot send_message wrapper
-    async def send_message(chat_id: int, text: str, parse_mode: str = None):
+    async def send_message(chat_id: int, text: str, parse_mode: str = None, reply_markup=None):
         await application.bot.send_message(
             chat_id=chat_id,
             text=text,
             parse_mode=parse_mode,
+            reply_markup=reply_markup,
         )
 
     # Create and start WebSocket service
@@ -162,6 +169,7 @@ async def setup_websocket_service(application: Application) -> WebSocketService:
         db=db,
         encryption=encryption,
         bot_send_message=send_message,
+        bot_username=bot_username,
     )
 
     await ws_service.start()

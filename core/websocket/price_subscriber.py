@@ -37,12 +37,14 @@ class PriceSubscriber:
         encryption: KeyEncryption,
         market_ws_url: str,
         bot_send_message: Optional[Callable] = None,
+        bot_username: str = None,
     ):
         self.ws_manager = ws_manager
         self.db = db
         self.encryption = encryption
         self.market_ws_url = market_ws_url
         self.bot_send_message = bot_send_message
+        self.bot_username = bot_username
 
         # Track token prices and subscriptions
         self._token_prices: Dict[str, float] = {}
@@ -280,6 +282,7 @@ class PriceSubscriber:
                     "id": alert.id,
                     "user_id": alert.user_id,
                     "token_id": alert.token_id,
+                    "market_condition_id": alert.market_condition_id,
                     "market_question": alert.market_question,
                     "outcome": alert.outcome,
                     "target_price": alert.target_price,
@@ -421,6 +424,8 @@ class PriceSubscriber:
             return
 
         try:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
             user_repo = UserRepository(self.db)
             user = await user_repo.get_by_id(alert["user_id"])
 
@@ -443,10 +448,24 @@ class PriceSubscriber:
                 if alert.get("note"):
                     message += f"\n📝 Note: _{alert['note']}_"
 
+                # Build deep link to trade view
+                reply_markup = None
+                if self.bot_username and alert.get("market_condition_id"):
+                    market_id = alert["market_condition_id"]
+                    # Use short ID (first 8 chars) for deep link
+                    short_id = market_id[:8] if len(market_id) > 8 else market_id
+                    trade_link = f"https://t.me/{self.bot_username}?start=m_{short_id}"
+
+                    keyboard = [
+                        [InlineKeyboardButton("📈 Trade Now", url=trade_link)],
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+
                 await self.bot_send_message(
                     chat_id=user.telegram_id,
                     text=message,
                     parse_mode="Markdown",
+                    reply_markup=reply_markup,
                 )
 
                 logger.info(f"Alert notification sent to user {user.telegram_id}")
@@ -465,6 +484,7 @@ class PriceSubscriber:
             "id": alert.id,
             "user_id": alert.user_id,
             "token_id": alert.token_id,
+            "market_condition_id": alert.market_condition_id,
             "market_question": alert.market_question,
             "outcome": alert.outcome,
             "target_price": alert.target_price,
