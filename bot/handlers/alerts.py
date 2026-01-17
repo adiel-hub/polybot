@@ -678,6 +678,7 @@ async def create_alert_with_price(
     market = context.user_data.get("alert_market")
     outcome = context.user_data.get("alert_outcome")
     direction = context.user_data.get("alert_direction")
+    current_price = context.user_data.get("alert_current_price", 0)
 
     if not all([market, outcome, direction]):
         if query:
@@ -685,6 +686,34 @@ async def create_alert_with_price(
         else:
             await update.message.reply_text("❌ Alert data missing. Please start over.")
         return ConversationState.MAIN_MENU
+
+    # Validate price against direction
+    if direction == AlertDirection.ABOVE or direction == "ABOVE":
+        if target_price <= current_price:
+            error_text = (
+                f"❌ *Invalid Target Price*\n\n"
+                f"Current price is `{current_price * 100:.1f}c`\n"
+                f"For 'Rises Above' alerts, target must be *higher* than current price.\n\n"
+                f"Please enter a price above `{current_price * 100:.1f}c`"
+            )
+            if query:
+                await query.edit_message_text(error_text, parse_mode="Markdown")
+            else:
+                await update.message.reply_text(error_text, parse_mode="Markdown")
+            return ConversationState.ALERTS_CREATE_PRICE
+    else:  # BELOW
+        if target_price >= current_price:
+            error_text = (
+                f"❌ *Invalid Target Price*\n\n"
+                f"Current price is `{current_price * 100:.1f}c`\n"
+                f"For 'Drops Below' alerts, target must be *lower* than current price.\n\n"
+                f"Please enter a price below `{current_price * 100:.1f}c`"
+            )
+            if query:
+                await query.edit_message_text(error_text, parse_mode="Markdown")
+            else:
+                await update.message.reply_text(error_text, parse_mode="Markdown")
+            return ConversationState.ALERTS_CREATE_PRICE
 
     # Get token ID for the outcome
     tokens = market.get("tokens", {})
