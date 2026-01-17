@@ -16,6 +16,10 @@ class NewsBotSettings(BaseSettings):
         default="",
         description="Telegram bot token for news bot (can use same as main bot)"
     )
+    trading_bot_username: str = Field(
+        default="",
+        description="Username of the trading bot for Trade button deep links (without @)"
+    )
 
     # Claude API
     anthropic_api_key: str = Field(

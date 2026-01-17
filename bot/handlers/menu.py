@@ -65,11 +65,34 @@ async def show_main_menu(
                 logger.info(f"✅ Resolved short ID {pending_market_id} from cache: {resolved_id[:20]}...")
                 actual_condition_id = resolved_id
             else:
-                # Not in cache - need to search for market by generating all possible short IDs
-                # This happens when user clicks a deep link before browsing markets
-                logger.info(f"⚠️ Short ID {pending_market_id} not in cache, will try API lookup")
-                # For now, try it as-is - the API will return None if not found
-                actual_condition_id = pending_market_id
+                # Not in cache - search through recent markets to find matching short ID
+                logger.info(f"⚠️ Short ID {pending_market_id} not in cache, searching recent markets...")
+                market_service = context.bot_data["market_service"]
+
+                # Search through trending markets to find the one with matching short ID
+                recent_markets = await market_service.gamma_client.get_trending_markets(limit=100)
+                for m in recent_markets:
+                    if generate_short_id(m.condition_id) == pending_market_id:
+                        actual_condition_id = m.condition_id
+                        # Cache it for future use
+                        if "market_short_ids" not in context.bot_data:
+                            context.bot_data["market_short_ids"] = {}
+                        context.bot_data["market_short_ids"][pending_market_id] = m.condition_id
+                        logger.info(f"✅ Found market by short ID search: {m.condition_id[:20]}...")
+                        break
+                else:
+                    # Also try new markets if not found in trending
+                    new_markets = await market_service.gamma_client.get_new_markets(limit=100)
+                    for m in new_markets:
+                        if generate_short_id(m.condition_id) == pending_market_id:
+                            actual_condition_id = m.condition_id
+                            if "market_short_ids" not in context.bot_data:
+                                context.bot_data["market_short_ids"] = {}
+                            context.bot_data["market_short_ids"][pending_market_id] = m.condition_id
+                            logger.info(f"✅ Found market in new markets: {m.condition_id[:20]}...")
+                            break
+                    else:
+                        logger.warning(f"❌ Could not resolve short ID {pending_market_id}")
 
         # Load market and show trade page
         market_service = context.bot_data["market_service"]

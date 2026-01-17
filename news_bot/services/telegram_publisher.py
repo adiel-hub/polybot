@@ -3,12 +3,13 @@
 import logging
 from typing import Optional
 
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
 
 from core.polymarket.gamma_client import Market
 from news_bot.services.article_generator import GeneratedArticle
+from utils.short_id import generate_short_id
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +21,18 @@ class TelegramPublisherService:
     Handles message formatting and posting via Telegram Bot API.
     """
 
-    def __init__(self, bot_token: str, channel_id: str):
+    def __init__(self, bot_token: str, channel_id: str, trading_bot_username: str = ""):
         """
         Initialize the publisher.
 
         Args:
             bot_token: Telegram bot token
             channel_id: Target channel ID or @username
+            trading_bot_username: Username of the trading bot for deep links (e.g., "PolyBotTrading")
         """
         self.bot = Bot(token=bot_token)
         self.channel_id = channel_id
+        self.trading_bot_username = trading_bot_username
 
     async def publish_article(
         self,
@@ -50,12 +53,16 @@ class TelegramPublisherService:
             # Format the complete message
             message = self._format_message(article, market)
 
+            # Build inline keyboard with buttons
+            keyboard = self._build_keyboard(market)
+
             # Send to channel
             sent_message = await self.bot.send_message(
                 chat_id=self.channel_id,
                 text=message,
                 parse_mode=ParseMode.HTML,
-                disable_web_page_preview=False,
+                disable_web_page_preview=True,
+                reply_markup=keyboard,
             )
 
             logger.info(
@@ -72,6 +79,49 @@ class TelegramPublisherService:
             logger.error(f"Unexpected error publishing article: {e}")
             return None
 
+    def _build_keyboard(self, market: Market) -> InlineKeyboardMarkup:
+        """
+        Build inline keyboard with Trade and View buttons.
+
+        Args:
+            market: Market data
+
+        Returns:
+            InlineKeyboardMarkup with buttons
+        """
+        buttons = []
+
+        # Trade button - deep link to trading bot
+        if self.trading_bot_username:
+            short_id = generate_short_id(market.condition_id)
+            trade_url = f"https://t.me/{self.trading_bot_username}?start=m_{short_id}"
+            buttons.append(
+                InlineKeyboardButton(
+                    text="📈 Trade Now",
+                    url=trade_url,
+                )
+            )
+
+        # View on Polymarket button
+        polymarket_url = ""
+        if market.slug:
+            polymarket_url = f"https://polymarket.com/event/{market.slug}"
+        elif market.event_id:
+            polymarket_url = f"https://polymarket.com/event/{market.event_id}"
+
+        if polymarket_url:
+            buttons.append(
+                InlineKeyboardButton(
+                    text="🔗 Polymarket",
+                    url=polymarket_url,
+                )
+            )
+
+        # Create keyboard with buttons in a row
+        if buttons:
+            return InlineKeyboardMarkup([buttons])
+        return None
+
     def _format_message(
         self,
         article: GeneratedArticle,
@@ -87,13 +137,6 @@ class TelegramPublisherService:
         Returns:
             Formatted message text with HTML
         """
-        # Build Polymarket URL
-        polymarket_url = ""
-        if market.slug:
-            polymarket_url = f"https://polymarket.com/event/{market.slug}"
-        elif market.event_id:
-            polymarket_url = f"https://polymarket.com/event/{market.event_id}"
-
         # Build the message
         parts = []
 
@@ -104,7 +147,7 @@ class TelegramPublisherService:
         # Article body
         parts.append(article.body)
 
-        # Market link section
+        # Market stats section
         parts.append("\n\n━━━━━━━━━━━━━━━━")
 
         # Quick stats
@@ -114,15 +157,13 @@ class TelegramPublisherService:
         )
         parts.append(stats_line)
 
-        if market.total_volume >= 1000:
+        if market.total_volume >= 1000000:
+            volume_str = f"${market.total_volume / 1000000:.1f}M"
+        elif market.total_volume >= 1000:
             volume_str = f"${market.total_volume / 1000:.0f}K"
         else:
             volume_str = f"${market.total_volume:.0f}"
         parts.append(f"💰 <b>Volume:</b> {volume_str}")
-
-        # Polymarket link
-        if polymarket_url:
-            parts.append(f"\n🔗 <a href=\"{polymarket_url}\">Trade on Polymarket</a>")
 
         return "\n".join(parts)
 

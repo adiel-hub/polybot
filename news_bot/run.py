@@ -98,6 +98,7 @@ class PolynewsBot:
         self.telegram_publisher = TelegramPublisherService(
             bot_token=bot_token,
             channel_id=news_settings.news_channel_id,
+            trading_bot_username=news_settings.trading_bot_username,
         )
 
         # Initialize scheduler
@@ -128,6 +129,11 @@ class PolynewsBot:
         if not news_settings.tavily_api_key:
             logger.warning(
                 "TAVILY_API_KEY not set - articles will be generated without web research"
+            )
+
+        if not news_settings.trading_bot_username:
+            logger.warning(
+                "TRADING_BOT_USERNAME not set - Trade button will not appear in articles"
             )
 
     async def poll_and_publish(self) -> None:
