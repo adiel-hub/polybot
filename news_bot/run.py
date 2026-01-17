@@ -97,7 +97,7 @@ class PolynewsBot:
         bot_token = news_settings.news_bot_token or settings.telegram_bot_token
         self.telegram_publisher = TelegramPublisherService(
             bot_token=bot_token,
-            channel_id=news_settings.news_channel_id,
+            channel_ids=news_settings.news_channel_ids,
             trading_bot_username=news_settings.trading_bot_username,
         )
 
@@ -111,8 +111,7 @@ class PolynewsBot:
         """Validate required settings are configured."""
         errors = []
 
-        if not news_settings.news_channel_id:
-            errors.append("NEWS_CHANNEL_ID is required")
+        # news_channel_ids is optional - bot can broadcast to registered channels
 
         if not news_settings.anthropic_api_key:
             errors.append("ANTHROPIC_API_KEY is required")
@@ -204,28 +203,32 @@ class PolynewsBot:
                 f"{article.tokens_used} tokens"
             )
 
-            # Publish to Telegram
-            message_id = await self.telegram_publisher.publish_article(
+            # Publish to Telegram (broadcasts to all configured channels)
+            results = await self.telegram_publisher.publish_article(
                 article=article,
                 market=market,
             )
 
-            if message_id:
-                # Record as posted
+            # Check if at least one channel was successful
+            successful_ids = [mid for mid in results.values() if mid is not None]
+            if successful_ids:
+                # Record as posted (store first successful message_id for reference)
                 await self.posted_repo.create(
                     condition_id=market.condition_id,
                     event_id=market.event_id,
                     question=market.question,
                     category=market.category,
                     article_title=article.title,
-                    telegram_message_id=message_id,
+                    telegram_message_id=successful_ids[0],
                     article_tokens_used=article.tokens_used,
                     research_sources=[s.url for s in research.sources],
                 )
-                logger.info(f"Published and recorded: message_id={message_id}")
+                logger.info(
+                    f"Published and recorded: {len(successful_ids)} channel(s) successful"
+                )
                 return True
             else:
-                logger.error("Failed to publish article to Telegram")
+                logger.error("Failed to publish article to any channel")
                 return False
 
         except Exception as e:
@@ -243,7 +246,11 @@ class PolynewsBot:
 
         logger.info("=" * 50)
         logger.info("Polynews Bot is running!")
-        logger.info(f"Channel: {news_settings.news_channel_id}")
+        channels = self.telegram_publisher.channel_ids
+        if channels:
+            logger.info(f"Broadcasting to {len(channels)} channel(s): {', '.join(channels)}")
+        else:
+            logger.info("No channels configured - waiting for channel registration")
         logger.info(f"Poll interval: {news_settings.poll_interval_minutes} minutes")
         logger.info(f"Min volume: ${news_settings.min_market_volume:,.0f}")
         logger.info(f"Min liquidity: ${news_settings.min_market_liquidity:,.0f}")

@@ -7,10 +7,13 @@ from pydantic import ConfigDict, Field
 class NewsBotSettings(BaseSettings):
     """Settings specific to the news bot."""
 
-    # Telegram Channel
-    news_channel_id: str = Field(
+    # Telegram Channels (comma-separated list)
+    # Use @channel_username or numeric IDs, separated by commas
+    # Example: "@channel1,-1001234567890,@channel2"
+    # Leave empty to broadcast to all channels/groups the bot is admin of
+    news_channel_ids: str = Field(
         default="",
-        description="Telegram channel ID or @username for news posts"
+        description="Comma-separated list of channel IDs or @usernames for news posts"
     )
     news_bot_token: str = Field(
         default="",
