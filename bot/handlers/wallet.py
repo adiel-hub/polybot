@@ -315,9 +315,18 @@ async def confirm_withdraw(
             approval_result = await withdrawal_mgr.approve_gas_sponsor(private_key)
 
             if not approval_result.success:
+                # Escape error message for Markdown
+                error_msg = (str(approval_result.error)
+                    .replace('_', '\\_')
+                    .replace('*', '\\*')
+                    .replace('[', '\\[')
+                    .replace(']', '\\]')
+                    .replace('`', '\\`')
+                    .replace('{', '\\{')
+                    .replace('}', '\\}'))
                 await query.edit_message_text(
                     f"❌ *Withdrawal Setup Failed*\n\n"
-                    f"⚠️ Could not approve gas sponsor: {approval_result.error}\n\n"
+                    f"⚠️ Could not approve gas sponsor: {error_msg}\n\n"
                     f"🔄 Please try again later.",
                     parse_mode="Markdown",
                 )
@@ -357,9 +366,18 @@ async def confirm_withdraw(
                 parse_mode="Markdown",
             )
         else:
+            # Escape error message for Markdown
+            error_msg = (str(result.error)
+                .replace('_', '\\_')
+                .replace('*', '\\*')
+                .replace('[', '\\[')
+                .replace(']', '\\]')
+                .replace('`', '\\`')
+                .replace('{', '\\{')
+                .replace('}', '\\}'))
             await query.edit_message_text(
                 f"❌ *Withdrawal Failed*\n\n"
-                f"⚠️ Error: {result.error}\n\n"
+                f"⚠️ Error: {error_msg}\n\n"
                 f"🔄 Please try again later.",
                 parse_mode="Markdown",
             )
