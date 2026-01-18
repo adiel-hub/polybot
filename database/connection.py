@@ -249,6 +249,27 @@ class Database:
             )
         """)
 
+        # Operator commissions table (platform fee on each filled trade)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS operator_commissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                order_id INTEGER NOT NULL,
+                trade_type TEXT NOT NULL CHECK(trade_type IN ('BUY', 'SELL')),
+                trade_amount REAL NOT NULL,
+                commission_rate REAL NOT NULL,
+                commission_amount REAL NOT NULL,
+                net_trade_amount REAL NOT NULL,
+                tx_hash TEXT,
+                status TEXT DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'TRANSFERRED', 'FAILED')),
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                transferred_at TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (order_id) REFERENCES orders(id)
+            )
+        """)
+
         # Create indexes
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_wallets_address ON wallets(address)")
@@ -261,6 +282,8 @@ class Database:
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_market_cache_active ON market_cache(is_active)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_referral_commissions_referrer ON referral_commissions(referrer_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_referral_commissions_referee ON referral_commissions(referee_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_operator_commissions_user_id ON operator_commissions(user_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_operator_commissions_status ON operator_commissions(status)")
 
         # Add referral columns to users table if they don't exist
         # SQLite doesn't support ADD COLUMN IF NOT EXISTS, so we check first

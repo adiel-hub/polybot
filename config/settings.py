@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     poly_builder_secret: str = Field(default="", description="Polymarket Builder secret")
     poly_builder_passphrase: str = Field(default="", description="Polymarket Builder passphrase")
 
+    # Operator Commission Settings
+    operator_commission_rate: float = Field(default=0.01, description="Commission rate on trades (0.01 = 1%)")
+    min_commission_amount: float = Field(default=0.01, description="Minimum commission to charge in USDC")
+    operator_wallet_address: str = Field(default="", description="Wallet address to receive commissions")
+
     # Integration Test Configuration
     test_funding_wallet_private_key: str = Field(default="", description="Test wallet private key for funding integration tests")
     test_funding_wallet_address: str = Field(default="", description="Test wallet address")

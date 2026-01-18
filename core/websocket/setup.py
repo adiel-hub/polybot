@@ -10,6 +10,7 @@ from core.websocket.manager import WebSocketManager
 from core.websocket.price_subscriber import PriceSubscriber
 from core.websocket.deposit_subscriber import DepositSubscriber
 from core.websocket.copy_trade_subscriber import CopyTradeSubscriber
+from core.websocket.order_fill_subscriber import OrderFillSubscriber
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class WebSocketService:
         self.price_subscriber: PriceSubscriber = None
         self.deposit_subscriber: DepositSubscriber = None
         self.copy_trade_subscriber: CopyTradeSubscriber = None
+        self.order_fill_subscriber: OrderFillSubscriber = None
 
     async def start(self) -> None:
         """Initialize and start all WebSocket subscriptions."""
@@ -77,6 +79,16 @@ class WebSocketService:
             bot_send_message=self.bot_send_message,
         )
         await self.copy_trade_subscriber.start()
+
+        # Initialize order fill subscriber (for limit order commission collection)
+        self.order_fill_subscriber = OrderFillSubscriber(
+            ws_manager=self.ws_manager,
+            db=self.db,
+            encryption=self.encryption,
+            user_ws_url=settings.polymarket_ws_user_url,
+            bot_send_message=self.bot_send_message,
+        )
+        await self.order_fill_subscriber.start()
 
         # Start the WebSocket manager (connects all registered connections)
         await self.ws_manager.start()
@@ -141,6 +153,16 @@ class WebSocketService:
         if self.price_subscriber:
             return self.price_subscriber.get_current_price(token_id)
         return None
+
+    async def add_order_to_monitor(self, order_id: int, polymarket_order_id: str) -> None:
+        """Add a limit order for fill monitoring (commission collection)."""
+        if self.order_fill_subscriber:
+            await self.order_fill_subscriber.add_order_to_monitor(order_id, polymarket_order_id)
+
+    async def remove_order_from_monitor(self, polymarket_order_id: str) -> None:
+        """Remove a limit order from fill monitoring."""
+        if self.order_fill_subscriber:
+            await self.order_fill_subscriber.remove_order_from_monitor(polymarket_order_id)
 
 
 async def setup_websocket_service(application: Application) -> WebSocketService:

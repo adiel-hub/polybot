@@ -35,6 +35,10 @@ class TradingService:
         from services.referral_service import ReferralService
         self.referral_service = ReferralService(db)
 
+        # Commission service for operator fees
+        from services.commission_service import CommissionService
+        self.commission_service = CommissionService(db)
+
     async def _get_clob_client(self, user_id: int) -> Optional[PolymarketCLOB]:
         """Get CLOB client for user."""
         wallet = await self.wallet_repo.get_by_user_id(user_id)
@@ -276,6 +280,15 @@ class TradingService:
                         # Don't fail the order if commission processing fails
                         logger.error(f"Failed to process referral commission: {e}")
 
+                    # Process operator commission (transfer to operator wallet)
+                    await self._process_operator_commission(
+                        user_id=user_id,
+                        order_id=db_order.id,
+                        trade_amount=amount,
+                        trade_type="BUY",
+                        wallet=wallet,
+                    )
+
                 return {
                     "success": True,
                     "order_id": result.order_id,
@@ -422,11 +435,27 @@ class TradingService:
                             sell_price,
                         )
 
-                        # Add proceeds to balance
+                        # Calculate proceeds and commission
                         wallet = await self.wallet_repo.get_by_user_id(user_id)
                         if wallet:
                             proceeds = size * sell_price
-                            await self.wallet_repo.add_balance(wallet.id, proceeds)
+
+                            # Process operator commission on sell proceeds
+                            commission_calc = await self._process_operator_commission(
+                                user_id=user_id,
+                                order_id=db_order.id,
+                                trade_amount=proceeds,
+                                trade_type="SELL",
+                                wallet=wallet,
+                            )
+
+                            # Add NET proceeds to balance (after commission)
+                            if commission_calc:
+                                net_proceeds = commission_calc.net_trade_amount
+                            else:
+                                net_proceeds = proceeds
+
+                            await self.wallet_repo.add_balance(wallet.id, net_proceeds)
 
                 return {
                     "success": True,
@@ -450,3 +479,92 @@ class TradingService:
                 error_message=str(e),
             )
             return {"success": False, "error": str(e)}
+
+    async def _process_operator_commission(
+        self,
+        user_id: int,
+        order_id: int,
+        trade_amount: float,
+        trade_type: str,
+        wallet,
+    ):
+        """
+        Process operator commission for a filled trade.
+
+        Calculates commission, transfers USDC to operator wallet, and records it.
+
+        Args:
+            user_id: User ID
+            order_id: Order ID
+            trade_amount: Trade amount in USDC
+            trade_type: "BUY" or "SELL"
+            wallet: User's wallet object
+
+        Returns:
+            CommissionCalculation or None if commission not applicable
+        """
+        try:
+            # Check if commission is enabled
+            if not self.commission_service.is_enabled():
+                logger.debug("Operator commission not enabled (no wallet configured)")
+                return None
+
+            # Calculate commission
+            commission_calc = self.commission_service.calculate_commission(trade_amount)
+
+            # Skip if commission is below minimum threshold
+            if commission_calc.commission_amount <= 0:
+                logger.debug(f"Commission below minimum threshold for ${trade_amount:.2f} trade")
+                return None
+
+            logger.info(
+                f"Processing operator commission: ${commission_calc.commission_amount:.4f} "
+                f"({commission_calc.commission_rate * 100:.1f}%) on ${trade_amount:.2f} {trade_type}"
+            )
+
+            # Decrypt wallet private key for transfer
+            private_key = self.encryption.decrypt(
+                wallet.encrypted_private_key,
+                wallet.encryption_salt,
+            )
+
+            # Transfer commission to operator wallet
+            transfer_result = await self.commission_service.transfer_commission(
+                from_private_key=private_key,
+                amount=commission_calc.commission_amount,
+            )
+
+            if transfer_result.success:
+                # Record successful commission transfer
+                await self.commission_service.record_commission(
+                    user_id=user_id,
+                    order_id=order_id,
+                    trade_type=trade_type,
+                    calculation=commission_calc,
+                    tx_hash=transfer_result.tx_hash,
+                    status="TRANSFERRED",
+                )
+                logger.info(
+                    f"Commission transferred: ${commission_calc.commission_amount:.4f} "
+                    f"TX: {transfer_result.tx_hash}"
+                )
+            else:
+                # Record failed commission (for retry later)
+                commission_id = await self.commission_service.record_commission(
+                    user_id=user_id,
+                    order_id=order_id,
+                    trade_type=trade_type,
+                    calculation=commission_calc,
+                    status="PENDING",
+                )
+                logger.warning(
+                    f"Commission transfer failed, recorded as pending: "
+                    f"${commission_calc.commission_amount:.4f} - {transfer_result.error}"
+                )
+
+            return commission_calc
+
+        except Exception as e:
+            # Don't fail the trade if commission processing fails
+            logger.error(f"Failed to process operator commission: {e}")
+            return None
