@@ -112,6 +112,47 @@ async def show_wallets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 
 @admin_only
+async def show_wallet_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Display wallet details."""
+    query = update.callback_query
+    await query.answer()
+
+    db = context.bot_data["db"]
+    admin_service = AdminService(db)
+
+    # Extract wallet ID from callback data
+    wallet_id = int(query.data.split("_")[-1])
+    wallet = await admin_service.get_wallet_by_id(wallet_id)
+
+    if not wallet:
+        await query.edit_message_text(
+            "❌ Wallet not found.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back", callback_data="admin_wallets_list")]
+            ]),
+        )
+        return AdminState.WALLET_LIST
+
+    # Get user info
+    user = await admin_service.get_user_by_id(wallet.user_id)
+
+    text = format_wallet_summary(wallet, user)
+
+    keyboard = [
+        [InlineKeyboardButton(f"👤 View User #{wallet.user_id}", callback_data=f"admin_user_{wallet.user_id}")],
+        [InlineKeyboardButton("🔙 Back", callback_data="admin_wallets_list")],
+    ]
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+    return AdminState.WALLET_DETAIL
+
+
+@admin_only
 async def show_deposit_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Display paginated deposit list."""
     query = update.callback_query

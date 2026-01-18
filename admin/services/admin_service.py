@@ -25,97 +25,106 @@ class AdminService:
         self, limit: int = 10, offset: int = 0, active_only: bool = False
     ) -> list[User]:
         """Get paginated user list."""
-        async with self.db.connection() as conn:
-            query = "SELECT * FROM users"
-            if active_only:
-                query += " WHERE is_active = 1"
-            query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        conn = await self.db.get_connection()
+        query = "SELECT * FROM users"
+        if active_only:
+            query += " WHERE is_active = 1"
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
 
-            cursor = await conn.execute(query, (limit, offset))
-            rows = await cursor.fetchall()
+        cursor = await conn.execute(query, (limit, offset))
+        rows = await cursor.fetchall()
 
-            return [User(**dict(row)) for row in rows]
+        return [User(**dict(row)) for row in rows]
 
     async def count_users(self, active_only: bool = False) -> int:
         """Count total users."""
-        async with self.db.connection() as conn:
-            query = "SELECT COUNT(*) FROM users"
-            if active_only:
-                query += " WHERE is_active = 1"
-            cursor = await conn.execute(query)
-            return (await cursor.fetchone())[0]
+        conn = await self.db.get_connection()
+        query = "SELECT COUNT(*) FROM users"
+        if active_only:
+            query += " WHERE is_active = 1"
+        cursor = await conn.execute(query)
+        return (await cursor.fetchone())[0]
 
     async def get_user_by_id(self, user_id: int) -> Optional[User]:
         """Get user by internal ID."""
-        async with self.db.connection() as conn:
-            cursor = await conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
-            row = await cursor.fetchone()
-            return User(**dict(row)) if row else None
+        conn = await self.db.get_connection()
+        cursor = await conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        row = await cursor.fetchone()
+        return User(**dict(row)) if row else None
 
     async def search_users(self, query: str) -> list[User]:
         """Search users by Telegram ID or username."""
-        async with self.db.connection() as conn:
-            # Try to find by Telegram ID first
-            if query.isdigit():
-                cursor = await conn.execute(
-                    "SELECT * FROM users WHERE telegram_id = ? OR id = ?",
-                    (int(query), int(query)),
-                )
-            else:
-                # Search by username (remove @ if present)
-                search_term = query.lstrip("@")
-                cursor = await conn.execute(
-                    "SELECT * FROM users WHERE telegram_username LIKE ?",
-                    (f"%{search_term}%",),
-                )
+        conn = await self.db.get_connection()
+        # Try to find by Telegram ID first
+        if query.isdigit():
+            cursor = await conn.execute(
+                "SELECT * FROM users WHERE telegram_id = ? OR id = ?",
+                (int(query), int(query)),
+            )
+        else:
+            # Search by username (remove @ if present)
+            search_term = query.lstrip("@")
+            cursor = await conn.execute(
+                "SELECT * FROM users WHERE telegram_username LIKE ?",
+                (f"%{search_term}%",),
+            )
 
-            rows = await cursor.fetchall()
-            return [User(**dict(row)) for row in rows]
+        rows = await cursor.fetchall()
+        return [User(**dict(row)) for row in rows]
 
     async def suspend_user(self, user_id: int) -> bool:
         """Suspend a user."""
-        async with self.db.connection() as conn:
-            await conn.execute(
-                "UPDATE users SET is_active = 0 WHERE id = ?", (user_id,)
-            )
-            await conn.commit()
-            return True
+        conn = await self.db.get_connection()
+        await conn.execute(
+            "UPDATE users SET is_active = 0 WHERE id = ?", (user_id,)
+        )
+        await conn.commit()
+        return True
 
     async def activate_user(self, user_id: int) -> bool:
         """Activate a user."""
-        async with self.db.connection() as conn:
-            await conn.execute(
-                "UPDATE users SET is_active = 1 WHERE id = ?", (user_id,)
-            )
-            await conn.commit()
-            return True
+        conn = await self.db.get_connection()
+        await conn.execute(
+            "UPDATE users SET is_active = 1 WHERE id = ?", (user_id,)
+        )
+        await conn.commit()
+        return True
 
     # ==================== WALLET OPERATIONS ====================
 
     async def get_wallet_by_user_id(self, user_id: int) -> Optional[Wallet]:
         """Get wallet by user ID."""
-        async with self.db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM wallets WHERE user_id = ?", (user_id,)
-            )
-            row = await cursor.fetchone()
-            return Wallet(**dict(row)) if row else None
+        conn = await self.db.get_connection()
+        cursor = await conn.execute(
+            "SELECT * FROM wallets WHERE user_id = ?", (user_id,)
+        )
+        row = await cursor.fetchone()
+        return Wallet(**dict(row)) if row else None
 
     async def get_wallets(self, limit: int = 10, offset: int = 0) -> list[Wallet]:
         """Get paginated wallet list."""
-        async with self.db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM wallets ORDER BY usdc_balance DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            )
-            rows = await cursor.fetchall()
-            return [Wallet(**dict(row)) for row in rows]
+        conn = await self.db.get_connection()
+        cursor = await conn.execute(
+            "SELECT * FROM wallets ORDER BY usdc_balance DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
+        rows = await cursor.fetchall()
+        return [Wallet(**dict(row)) for row in rows]
 
     async def count_wallets(self) -> int:
         """Count total wallets."""
-        async with self.db.connection() as conn:
-            cursor = await conn.execute("SELECT COUNT(*) FROM wallets")
-            return (await cursor.fetchone())[0]
+        conn = await self.db.get_connection()
+        cursor = await conn.execute("SELECT COUNT(*) FROM wallets")
+        return (await cursor.fetchone())[0]
+
+    async def get_wallet_by_id(self, wallet_id: int) -> Optional[Wallet]:
+        """Get wallet by ID."""
+        conn = await self.db.get_connection()
+        cursor = await conn.execute(
+            "SELECT * FROM wallets WHERE id = ?", (wallet_id,)
+        )
+        row = await cursor.fetchone()
+        return Wallet(**dict(row)) if row else None
 
     # ==================== ORDER OPERATIONS ====================
 
@@ -127,80 +136,80 @@ class AdminService:
         user_id: Optional[int] = None,
     ) -> list[Order]:
         """Get paginated order list."""
-        async with self.db.connection() as conn:
-            query = "SELECT * FROM orders WHERE 1=1"
-            params: list[Any] = []
+        conn = await self.db.get_connection()
+        query = "SELECT * FROM orders WHERE 1=1"
+        params: list[Any] = []
 
-            if status:
-                query += " AND status = ?"
-                params.append(status)
+        if status:
+            query += " AND status = ?"
+            params.append(status)
 
-            if user_id:
-                query += " AND user_id = ?"
-                params.append(user_id)
+        if user_id:
+            query += " AND user_id = ?"
+            params.append(user_id)
 
-            query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
 
-            cursor = await conn.execute(query, params)
-            rows = await cursor.fetchall()
+        cursor = await conn.execute(query, params)
+        rows = await cursor.fetchall()
 
-            orders = []
-            for row in rows:
-                data = dict(row)
-                data["side"] = OrderSide[data["side"]]
-                data["order_type"] = OrderType[data["order_type"]]
-                data["status"] = OrderStatus[data["status"]]
-                data["outcome"] = Outcome[data["outcome"]]
-                orders.append(Order(**data))
-
-            return orders
-
-    async def count_orders(
-        self, status: Optional[str] = None, user_id: Optional[int] = None
-    ) -> int:
-        """Count orders."""
-        async with self.db.connection() as conn:
-            query = "SELECT COUNT(*) FROM orders WHERE 1=1"
-            params: list[Any] = []
-
-            if status:
-                query += " AND status = ?"
-                params.append(status)
-
-            if user_id:
-                query += " AND user_id = ?"
-                params.append(user_id)
-
-            cursor = await conn.execute(query, params)
-            return (await cursor.fetchone())[0]
-
-    async def get_order_by_id(self, order_id: int) -> Optional[Order]:
-        """Get order by ID."""
-        async with self.db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM orders WHERE id = ?", (order_id,)
-            )
-            row = await cursor.fetchone()
-            if not row:
-                return None
-
+        orders = []
+        for row in rows:
             data = dict(row)
             data["side"] = OrderSide[data["side"]]
             data["order_type"] = OrderType[data["order_type"]]
             data["status"] = OrderStatus[data["status"]]
             data["outcome"] = Outcome[data["outcome"]]
-            return Order(**data)
+            orders.append(Order(**data))
+
+        return orders
+
+    async def count_orders(
+        self, status: Optional[str] = None, user_id: Optional[int] = None
+    ) -> int:
+        """Count orders."""
+        conn = await self.db.get_connection()
+        query = "SELECT COUNT(*) FROM orders WHERE 1=1"
+        params: list[Any] = []
+
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+
+        if user_id:
+            query += " AND user_id = ?"
+            params.append(user_id)
+
+        cursor = await conn.execute(query, params)
+        return (await cursor.fetchone())[0]
+
+    async def get_order_by_id(self, order_id: int) -> Optional[Order]:
+        """Get order by ID."""
+        conn = await self.db.get_connection()
+        cursor = await conn.execute(
+            "SELECT * FROM orders WHERE id = ?", (order_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+
+        data = dict(row)
+        data["side"] = OrderSide[data["side"]]
+        data["order_type"] = OrderType[data["order_type"]]
+        data["status"] = OrderStatus[data["status"]]
+        data["outcome"] = Outcome[data["outcome"]]
+        return Order(**data)
 
     async def cancel_order(self, order_id: int) -> bool:
         """Cancel an order (admin action)."""
-        async with self.db.connection() as conn:
-            await conn.execute(
-                "UPDATE orders SET status = 'CANCELLED' WHERE id = ? AND status IN ('PENDING', 'OPEN')",
-                (order_id,),
-            )
-            await conn.commit()
-            return True
+        conn = await self.db.get_connection()
+        await conn.execute(
+            "UPDATE orders SET status = 'CANCELLED' WHERE id = ? AND status IN ('PENDING', 'OPEN')",
+            (order_id,),
+        )
+        await conn.commit()
+        return True
 
     # ==================== POSITION OPERATIONS ====================
 
@@ -208,42 +217,42 @@ class AdminService:
         self, limit: int = 10, offset: int = 0, user_id: Optional[int] = None
     ) -> list[Position]:
         """Get paginated position list."""
-        async with self.db.connection() as conn:
-            query = "SELECT * FROM positions WHERE size > 0"
-            params: list[Any] = []
+        conn = await self.db.get_connection()
+        query = "SELECT * FROM positions WHERE size > 0"
+        params: list[Any] = []
 
-            if user_id:
-                query += " AND user_id = ?"
-                params.append(user_id)
+        if user_id:
+            query += " AND user_id = ?"
+            params.append(user_id)
 
-            query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
 
-            cursor = await conn.execute(query, params)
-            rows = await cursor.fetchall()
-            return [Position(**dict(row)) for row in rows]
+        cursor = await conn.execute(query, params)
+        rows = await cursor.fetchall()
+        return [Position(**dict(row)) for row in rows]
 
     async def count_positions(self, user_id: Optional[int] = None) -> int:
         """Count active positions."""
-        async with self.db.connection() as conn:
-            query = "SELECT COUNT(*) FROM positions WHERE size > 0"
-            params: list[Any] = []
+        conn = await self.db.get_connection()
+        query = "SELECT COUNT(*) FROM positions WHERE size > 0"
+        params: list[Any] = []
 
-            if user_id:
-                query += " AND user_id = ?"
-                params.append(user_id)
+        if user_id:
+            query += " AND user_id = ?"
+            params.append(user_id)
 
-            cursor = await conn.execute(query, params)
-            return (await cursor.fetchone())[0]
+        cursor = await conn.execute(query, params)
+        return (await cursor.fetchone())[0]
 
     async def get_position_by_id(self, position_id: int) -> Optional[Position]:
         """Get position by ID."""
-        async with self.db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM positions WHERE id = ?", (position_id,)
-            )
-            row = await cursor.fetchone()
-            return Position(**dict(row)) if row else None
+        conn = await self.db.get_connection()
+        cursor = await conn.execute(
+            "SELECT * FROM positions WHERE id = ?", (position_id,)
+        )
+        row = await cursor.fetchone()
+        return Position(**dict(row)) if row else None
 
     # ==================== STOP LOSS OPERATIONS ====================
 
@@ -251,33 +260,33 @@ class AdminService:
         self, limit: int = 10, offset: int = 0, active_only: bool = True
     ) -> list[StopLoss]:
         """Get paginated stop loss list."""
-        async with self.db.connection() as conn:
-            query = "SELECT * FROM stop_losses"
-            if active_only:
-                query += " WHERE is_active = 1"
-            query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        conn = await self.db.get_connection()
+        query = "SELECT * FROM stop_loss_orders"
+        if active_only:
+            query += " WHERE is_active = 1"
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
 
-            cursor = await conn.execute(query, (limit, offset))
-            rows = await cursor.fetchall()
-            return [StopLoss(**dict(row)) for row in rows]
+        cursor = await conn.execute(query, (limit, offset))
+        rows = await cursor.fetchall()
+        return [StopLoss(**dict(row)) for row in rows]
 
     async def count_stop_losses(self, active_only: bool = True) -> int:
         """Count stop losses."""
-        async with self.db.connection() as conn:
-            query = "SELECT COUNT(*) FROM stop_losses"
-            if active_only:
-                query += " WHERE is_active = 1"
-            cursor = await conn.execute(query)
-            return (await cursor.fetchone())[0]
+        conn = await self.db.get_connection()
+        query = "SELECT COUNT(*) FROM stop_loss_orders"
+        if active_only:
+            query += " WHERE is_active = 1"
+        cursor = await conn.execute(query)
+        return (await cursor.fetchone())[0]
 
     async def deactivate_stop_loss(self, stop_loss_id: int) -> bool:
         """Deactivate a stop loss."""
-        async with self.db.connection() as conn:
-            await conn.execute(
-                "UPDATE stop_losses SET is_active = 0 WHERE id = ?", (stop_loss_id,)
-            )
-            await conn.commit()
-            return True
+        conn = await self.db.get_connection()
+        await conn.execute(
+            "UPDATE stop_loss_orders SET is_active = 0 WHERE id = ?", (stop_loss_id,)
+        )
+        await conn.commit()
+        return True
 
     # ==================== COPY TRADING OPERATIONS ====================
 
@@ -285,34 +294,34 @@ class AdminService:
         self, limit: int = 10, offset: int = 0, active_only: bool = False
     ) -> list[CopyTrader]:
         """Get paginated copy trading subscriptions."""
-        async with self.db.connection() as conn:
-            query = "SELECT * FROM copy_traders"
-            if active_only:
-                query += " WHERE is_active = 1"
-            query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        conn = await self.db.get_connection()
+        query = "SELECT * FROM copy_traders"
+        if active_only:
+            query += " WHERE is_active = 1"
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
 
-            cursor = await conn.execute(query, (limit, offset))
-            rows = await cursor.fetchall()
-            return [CopyTrader(**dict(row)) for row in rows]
+        cursor = await conn.execute(query, (limit, offset))
+        rows = await cursor.fetchall()
+        return [CopyTrader(**dict(row)) for row in rows]
 
     async def count_copy_subscriptions(self, active_only: bool = False) -> int:
         """Count copy trading subscriptions."""
-        async with self.db.connection() as conn:
-            query = "SELECT COUNT(*) FROM copy_traders"
-            if active_only:
-                query += " WHERE is_active = 1"
-            cursor = await conn.execute(query)
-            return (await cursor.fetchone())[0]
+        conn = await self.db.get_connection()
+        query = "SELECT COUNT(*) FROM copy_traders"
+        if active_only:
+            query += " WHERE is_active = 1"
+        cursor = await conn.execute(query)
+        return (await cursor.fetchone())[0]
 
     async def deactivate_subscription(self, subscription_id: int) -> bool:
         """Deactivate a copy trading subscription."""
-        async with self.db.connection() as conn:
-            await conn.execute(
-                "UPDATE copy_traders SET is_active = 0 WHERE id = ?",
-                (subscription_id,),
-            )
-            await conn.commit()
-            return True
+        conn = await self.db.get_connection()
+        await conn.execute(
+            "UPDATE copy_traders SET is_active = 0 WHERE id = ?",
+            (subscription_id,),
+        )
+        await conn.commit()
+        return True
 
     # ==================== DEPOSIT/WITHDRAWAL OPERATIONS ====================
 
@@ -320,37 +329,37 @@ class AdminService:
         self, limit: int = 10, offset: int = 0
     ) -> list[dict[str, Any]]:
         """Get paginated deposit list."""
-        async with self.db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM deposits ORDER BY detected_at DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            )
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+        conn = await self.db.get_connection()
+        cursor = await conn.execute(
+            "SELECT * FROM deposits ORDER BY detected_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
     async def count_deposits(self) -> int:
         """Count deposits."""
-        async with self.db.connection() as conn:
-            cursor = await conn.execute("SELECT COUNT(*) FROM deposits")
-            return (await cursor.fetchone())[0]
+        conn = await self.db.get_connection()
+        cursor = await conn.execute("SELECT COUNT(*) FROM deposits")
+        return (await cursor.fetchone())[0]
 
     async def get_withdrawals(
         self, limit: int = 10, offset: int = 0
     ) -> list[dict[str, Any]]:
         """Get paginated withdrawal list."""
-        async with self.db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM withdrawals ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            )
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+        conn = await self.db.get_connection()
+        cursor = await conn.execute(
+            "SELECT * FROM withdrawals ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
     async def count_withdrawals(self) -> int:
         """Count withdrawals."""
-        async with self.db.connection() as conn:
-            cursor = await conn.execute("SELECT COUNT(*) FROM withdrawals")
-            return (await cursor.fetchone())[0]
+        conn = await self.db.get_connection()
+        cursor = await conn.execute("SELECT COUNT(*) FROM withdrawals")
+        return (await cursor.fetchone())[0]
 
     # ==================== FULL USER DETAILS ====================
 

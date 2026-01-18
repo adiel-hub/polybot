@@ -36,8 +36,12 @@ class AdminState(IntEnum):
 
     # Wallet/Financial management
     WALLET_LIST = auto()
+    WALLET_DETAIL = auto()
     DEPOSIT_LIST = auto()
     WITHDRAWAL_LIST = auto()
+
+    # Builder stats
+    BUILDER_STATS = auto()
 
     # System monitoring
     SYSTEM_MONITOR = auto()

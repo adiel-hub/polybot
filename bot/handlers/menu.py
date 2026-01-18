@@ -1,6 +1,8 @@
 """Main menu handlers."""
 
+import json
 import logging
+from pathlib import Path
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -9,6 +11,21 @@ from bot.keyboards.main_menu import get_main_menu_keyboard
 from utils.short_id import generate_short_id
 
 logger = logging.getLogger(__name__)
+
+# Shared mapping file written by whale-bot for short ID -> condition ID
+SHORT_ID_MAP_FILE = Path(__file__).parent.parent.parent / "data" / "short_id_map.json"
+
+
+def _load_short_id_from_file(short_id: str) -> str | None:
+    """Load a condition ID from the shared mapping file."""
+    try:
+        if SHORT_ID_MAP_FILE.exists():
+            with open(SHORT_ID_MAP_FILE, "r") as f:
+                mappings = json.load(f)
+                return mappings.get(short_id)
+    except Exception as e:
+        logger.error(f"Failed to load short ID mapping: {e}")
+    return None
 
 
 async def show_main_menu(
@@ -57,7 +74,7 @@ async def show_main_menu(
         # Check if it's a short ID (8 chars) and resolve it
         actual_condition_id = pending_market_id
         if len(pending_market_id) == 8:
-            # Try to resolve from cache first
+            # Try to resolve from memory cache first
             short_id_map = context.bot_data.get("market_short_ids", {})
             resolved_id = short_id_map.get(pending_market_id)
 
@@ -65,34 +82,58 @@ async def show_main_menu(
                 logger.info(f"✅ Resolved short ID {pending_market_id} from cache: {resolved_id[:20]}...")
                 actual_condition_id = resolved_id
             else:
-                # Not in cache - search through recent markets to find matching short ID
-                logger.info(f"⚠️ Short ID {pending_market_id} not in cache, searching recent markets...")
-                market_service = context.bot_data["market_service"]
-
-                # Search through trending markets to find the one with matching short ID
-                recent_markets = await market_service.gamma_client.get_trending_markets(limit=100)
-                for m in recent_markets:
-                    if generate_short_id(m.condition_id) == pending_market_id:
-                        actual_condition_id = m.condition_id
-                        # Cache it for future use
-                        if "market_short_ids" not in context.bot_data:
-                            context.bot_data["market_short_ids"] = {}
-                        context.bot_data["market_short_ids"][pending_market_id] = m.condition_id
-                        logger.info(f"✅ Found market by short ID search: {m.condition_id[:20]}...")
-                        break
+                # Try to resolve from shared file (written by whale-bot)
+                file_resolved = _load_short_id_from_file(pending_market_id)
+                if file_resolved:
+                    logger.info(f"✅ Resolved short ID {pending_market_id} from file: {file_resolved[:20]}...")
+                    actual_condition_id = file_resolved
+                    # Cache it in memory too
+                    if "market_short_ids" not in context.bot_data:
+                        context.bot_data["market_short_ids"] = {}
+                    context.bot_data["market_short_ids"][pending_market_id] = file_resolved
                 else:
-                    # Also try new markets if not found in trending
-                    new_markets = await market_service.gamma_client.get_new_markets(limit=100)
-                    for m in new_markets:
+                    # Not in cache or file - search through recent markets
+                    logger.info(f"⚠️ Short ID {pending_market_id} not in cache/file, searching recent markets...")
+                    market_service = context.bot_data["market_service"]
+
+                    # Search through trending markets to find the one with matching short ID
+                    recent_markets = await market_service.gamma_client.get_trending_markets(limit=100)
+                    for m in recent_markets:
                         if generate_short_id(m.condition_id) == pending_market_id:
                             actual_condition_id = m.condition_id
+                            # Cache it for future use
                             if "market_short_ids" not in context.bot_data:
                                 context.bot_data["market_short_ids"] = {}
                             context.bot_data["market_short_ids"][pending_market_id] = m.condition_id
-                            logger.info(f"✅ Found market in new markets: {m.condition_id[:20]}...")
+                            logger.info(f"✅ Found market by short ID search: {m.condition_id[:20]}...")
                             break
                     else:
-                        logger.warning(f"❌ Could not resolve short ID {pending_market_id}")
+                        # Also try new markets if not found in trending
+                        new_markets = await market_service.gamma_client.get_new_markets(limit=100)
+                        for m in new_markets:
+                            if generate_short_id(m.condition_id) == pending_market_id:
+                                actual_condition_id = m.condition_id
+                                if "market_short_ids" not in context.bot_data:
+                                    context.bot_data["market_short_ids"] = {}
+                                context.bot_data["market_short_ids"][pending_market_id] = m.condition_id
+                                logger.info(f"✅ Found market in new markets: {m.condition_id[:20]}...")
+                                break
+                        else:
+                            logger.warning(f"❌ Could not resolve short ID {pending_market_id}")
+                            # Try to search ALL events (more comprehensive than trending/new)
+                            # This is a last resort for markets not in top trending/new
+                            try:
+                                all_markets = await market_service.gamma_client.get_events(limit=500)
+                                for m in all_markets:
+                                    if generate_short_id(m.condition_id) == pending_market_id:
+                                        actual_condition_id = m.condition_id
+                                        if "market_short_ids" not in context.bot_data:
+                                            context.bot_data["market_short_ids"] = {}
+                                        context.bot_data["market_short_ids"][pending_market_id] = m.condition_id
+                                        logger.info(f"✅ Found market in extended search: {m.condition_id[:20]}...")
+                                        break
+                            except Exception as e:
+                                logger.error(f"Extended market search failed: {e}")
 
         # Load market and show trade page
         market_service = context.bot_data["market_service"]

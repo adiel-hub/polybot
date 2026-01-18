@@ -1,6 +1,9 @@
 """Telegram publisher service for posting articles to channels."""
 
+import json
 import logging
+import re
+from pathlib import Path
 from typing import Optional, List, Dict
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
@@ -12,6 +15,31 @@ from news_bot.services.article_generator import GeneratedArticle
 from utils.short_id import generate_short_id
 
 logger = logging.getLogger(__name__)
+
+# Shared mapping file for short ID -> condition ID
+SHORT_ID_MAP_FILE = Path(__file__).parent.parent.parent / "data" / "short_id_map.json"
+
+
+def _save_short_id_mapping(short_id: str, condition_id: str) -> None:
+    """Save a short ID -> condition ID mapping to the shared file."""
+    try:
+        SHORT_ID_MAP_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+        mappings = {}
+        if SHORT_ID_MAP_FILE.exists():
+            with open(SHORT_ID_MAP_FILE, "r") as f:
+                mappings = json.load(f)
+
+        mappings[short_id] = condition_id
+
+        # Keep only last 1000 mappings
+        if len(mappings) > 1000:
+            mappings = dict(list(mappings.items())[-1000:])
+
+        with open(SHORT_ID_MAP_FILE, "w") as f:
+            json.dump(mappings, f)
+    except Exception as e:
+        logger.error(f"Failed to save short ID mapping: {e}")
 
 
 class TelegramPublisherService:
@@ -147,6 +175,8 @@ class TelegramPublisherService:
         # Trade button - deep link to trading bot
         if self.trading_bot_username:
             short_id = generate_short_id(market.condition_id)
+            # Save mapping so PolyBot can resolve the short ID
+            _save_short_id_mapping(short_id, market.condition_id)
             trade_url = f"https://t.me/{self.trading_bot_username}?start=m_{short_id}"
             buttons.append(
                 InlineKeyboardButton(
@@ -156,11 +186,13 @@ class TelegramPublisherService:
             )
 
         # View on Polymarket button
+        # Use market slug with /market/ path (same as whale bot)
         polymarket_url = ""
         if market.slug:
-            polymarket_url = f"https://polymarket.com/event/{market.slug}"
-        elif market.event_id:
-            polymarket_url = f"https://polymarket.com/event/{market.event_id}"
+            # Clean the slug - remove trailing numeric patterns (token IDs)
+            clean_slug = re.sub(r'(-\d+)+$', '', market.slug)
+            if clean_slug:
+                polymarket_url = f"https://polymarket.com/market/{clean_slug}"
 
         if polymarket_url:
             buttons.append(
@@ -201,20 +233,18 @@ class TelegramPublisherService:
         # Market stats section
         parts.append("\n\n━━━━━━━━━━━━━━━━")
 
-        # Quick stats
+        # Market name/question
+        parts.append(f"📊 <b>{market.question}</b>")
+
+        # Quick stats with exact percentages
         stats_line = (
-            f"📊 <b>Market:</b> YES {market.yes_price * 100:.0f}% | "
-            f"NO {market.no_price * 100:.0f}%"
+            f"├ ✅ Yes: {market.yes_price * 100:.1f}% | "
+            f"❌ No: {market.no_price * 100:.1f}%"
         )
         parts.append(stats_line)
 
-        if market.total_volume >= 1000000:
-            volume_str = f"${market.total_volume / 1000000:.1f}M"
-        elif market.total_volume >= 1000:
-            volume_str = f"${market.total_volume / 1000:.0f}K"
-        else:
-            volume_str = f"${market.total_volume:.0f}"
-        parts.append(f"💰 <b>Volume:</b> {volume_str}")
+        # Full volume with formatting
+        parts.append(f"└ 💰 Volume: ${market.total_volume:,.2f}")
 
         return "\n".join(parts)
 

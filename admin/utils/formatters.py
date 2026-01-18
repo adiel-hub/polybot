@@ -34,10 +34,16 @@ def format_pnl_emoji(value: float) -> str:
         return "➖ $0.00"
 
 
-def format_datetime(dt: Optional[datetime]) -> str:
+def format_datetime(dt: Optional[datetime | str]) -> str:
     """Format datetime for display."""
     if not dt:
         return "N/A"
+    # Handle string datetime from SQLite
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt)
+        except ValueError:
+            return dt[:16] if len(dt) >= 16 else dt
     return dt.strftime("%Y-%m-%d %H:%M")
 
 

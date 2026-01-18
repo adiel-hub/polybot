@@ -15,32 +15,33 @@ class StatsService:
 
     async def get_quick_stats(self) -> dict[str, Any]:
         """Get quick stats for admin menu."""
-        async with self.db.connection() as conn:
-            # Total users
-            cursor = await conn.execute("SELECT COUNT(*) FROM users")
-            total_users = (await cursor.fetchone())[0]
+        conn = await self.db.get_connection()
 
-            # Active users
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM users WHERE is_active = 1"
-            )
-            active_users = (await cursor.fetchone())[0]
+        # Total users
+        cursor = await conn.execute("SELECT COUNT(*) FROM users")
+        total_users = (await cursor.fetchone())[0]
 
-            # Total balance
-            cursor = await conn.execute("SELECT COALESCE(SUM(usdc_balance), 0) FROM wallets")
-            total_balance = (await cursor.fetchone())[0]
+        # Active users
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM users WHERE is_active = 1"
+        )
+        active_users = (await cursor.fetchone())[0]
 
-            # Open orders
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM orders WHERE status IN ('PENDING', 'OPEN')"
-            )
-            open_orders = (await cursor.fetchone())[0]
+        # Total balance
+        cursor = await conn.execute("SELECT COALESCE(SUM(usdc_balance), 0) FROM wallets")
+        total_balance = (await cursor.fetchone())[0]
 
-            # Active positions
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM positions WHERE size > 0"
-            )
-            active_positions = (await cursor.fetchone())[0]
+        # Open orders
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM orders WHERE status IN ('PENDING', 'OPEN')"
+        )
+        open_orders = (await cursor.fetchone())[0]
+
+        # Active positions
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM positions WHERE size > 0"
+        )
+        active_positions = (await cursor.fetchone())[0]
 
         return {
             "total_users": total_users,
@@ -52,86 +53,87 @@ class StatsService:
 
     async def get_dashboard_stats(self) -> dict[str, Any]:
         """Get comprehensive stats for dashboard."""
-        async with self.db.connection() as conn:
-            # User stats
-            cursor = await conn.execute("SELECT COUNT(*) FROM users")
-            total_users = (await cursor.fetchone())[0]
+        conn = await self.db.get_connection()
 
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM users WHERE is_active = 1"
-            )
-            active_users = (await cursor.fetchone())[0]
+        # User stats
+        cursor = await conn.execute("SELECT COUNT(*) FROM users")
+        total_users = (await cursor.fetchone())[0]
 
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM users WHERE is_active = 0"
-            )
-            suspended_users = (await cursor.fetchone())[0]
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM users WHERE is_active = 1"
+        )
+        active_users = (await cursor.fetchone())[0]
 
-            # Financial stats
-            cursor = await conn.execute("SELECT COALESCE(SUM(usdc_balance), 0) FROM wallets")
-            total_balance = (await cursor.fetchone())[0]
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM users WHERE is_active = 0"
+        )
+        suspended_users = (await cursor.fetchone())[0]
 
-            cursor = await conn.execute(
-                "SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE status = 'CONFIRMED'"
-            )
-            total_deposits = (await cursor.fetchone())[0]
+        # Financial stats
+        cursor = await conn.execute("SELECT COALESCE(SUM(usdc_balance), 0) FROM wallets")
+        total_balance = (await cursor.fetchone())[0]
 
-            cursor = await conn.execute(
-                "SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE status = 'CONFIRMED'"
-            )
-            total_withdrawals = (await cursor.fetchone())[0]
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE status = 'CONFIRMED'"
+        )
+        total_deposits = (await cursor.fetchone())[0]
 
-            # Order stats
-            cursor = await conn.execute("SELECT COUNT(*) FROM orders")
-            total_orders = (await cursor.fetchone())[0]
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE status = 'CONFIRMED'"
+        )
+        total_withdrawals = (await cursor.fetchone())[0]
 
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM orders WHERE status IN ('PENDING', 'OPEN')"
-            )
-            open_orders = (await cursor.fetchone())[0]
+        # Order stats
+        cursor = await conn.execute("SELECT COUNT(*) FROM orders")
+        total_orders = (await cursor.fetchone())[0]
 
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM orders WHERE status = 'FILLED'"
-            )
-            filled_orders = (await cursor.fetchone())[0]
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM orders WHERE status IN ('PENDING', 'OPEN')"
+        )
+        open_orders = (await cursor.fetchone())[0]
 
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM orders WHERE status = 'FAILED'"
-            )
-            failed_orders = (await cursor.fetchone())[0]
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM orders WHERE status = 'FILLED'"
+        )
+        filled_orders = (await cursor.fetchone())[0]
 
-            # Position stats
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM positions WHERE size > 0"
-            )
-            active_positions = (await cursor.fetchone())[0]
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM orders WHERE status = 'FAILED'"
+        )
+        failed_orders = (await cursor.fetchone())[0]
 
-            cursor = await conn.execute(
-                "SELECT COALESCE(SUM(size * current_price), 0) FROM positions WHERE size > 0"
-            )
-            total_position_value = (await cursor.fetchone())[0]
+        # Position stats
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM positions WHERE size > 0"
+        )
+        active_positions = (await cursor.fetchone())[0]
 
-            cursor = await conn.execute(
-                "SELECT COALESCE(SUM(unrealized_pnl), 0) FROM positions WHERE size > 0"
-            )
-            total_unrealized_pnl = (await cursor.fetchone())[0]
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(size * current_price), 0) FROM positions WHERE size > 0"
+        )
+        total_position_value = (await cursor.fetchone())[0]
 
-            # Stop loss stats
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM stop_losses WHERE is_active = 1"
-            )
-            active_stop_losses = (await cursor.fetchone())[0]
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(unrealized_pnl), 0) FROM positions WHERE size > 0"
+        )
+        total_unrealized_pnl = (await cursor.fetchone())[0]
 
-            # Copy trading stats
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM copy_traders WHERE is_active = 1"
-            )
-            active_copy_subscriptions = (await cursor.fetchone())[0]
+        # Stop loss stats
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM stop_loss_orders WHERE is_active = 1"
+        )
+        active_stop_losses = (await cursor.fetchone())[0]
 
-            cursor = await conn.execute(
-                "SELECT COUNT(DISTINCT trader_address) FROM copy_traders WHERE is_active = 1"
-            )
-            unique_traders_followed = (await cursor.fetchone())[0]
+        # Copy trading stats
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM copy_traders WHERE is_active = 1"
+        )
+        active_copy_subscriptions = (await cursor.fetchone())[0]
+
+        cursor = await conn.execute(
+            "SELECT COUNT(DISTINCT trader_address) FROM copy_traders WHERE is_active = 1"
+        )
+        unique_traders_followed = (await cursor.fetchone())[0]
 
         return {
             "users": {

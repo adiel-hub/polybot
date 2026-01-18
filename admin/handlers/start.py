@@ -31,7 +31,10 @@ def get_admin_main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("⚙️ System", callback_data="admin_system"),
             InlineKeyboardButton("🔧 Settings", callback_data="admin_settings"),
         ],
-        [InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast")],
+        [
+            InlineKeyboardButton("🏗️ Builder", callback_data="admin_builder"),
+            InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast"),
+        ],
         [InlineKeyboardButton("❌ Close", callback_data="admin_close")],
     ]
     return InlineKeyboardMarkup(keyboard)

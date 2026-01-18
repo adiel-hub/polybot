@@ -40,10 +40,12 @@ from admin.handlers.copy_trading import (
 from admin.handlers.wallets import (
     show_wallet_list,
     show_wallets,
+    show_wallet_detail,
     show_deposit_list,
     show_withdrawal_list,
 )
 from admin.handlers.system import show_system_monitor, check_component_status
+from admin.handlers.builder import show_builder_stats, refresh_builder_stats
 from admin.handlers.settings import show_settings, handle_setting_toggle
 from admin.handlers.broadcast import (
     show_broadcast_menu,
@@ -80,6 +82,7 @@ def create_admin_handler() -> ConversationHandler:
                 CallbackQueryHandler(show_wallet_list, pattern="^admin_wallets$"),
                 CallbackQueryHandler(show_system_monitor, pattern="^admin_system$"),
                 CallbackQueryHandler(show_settings, pattern="^admin_settings$"),
+                CallbackQueryHandler(show_builder_stats, pattern="^admin_builder$"),
                 CallbackQueryHandler(show_broadcast_menu, pattern="^admin_broadcast$"),
                 CallbackQueryHandler(close_admin_panel, pattern="^admin_close$"),
             ],
@@ -160,10 +163,16 @@ def create_admin_handler() -> ConversationHandler:
             AdminState.WALLET_LIST: [
                 CallbackQueryHandler(show_wallets, pattern="^admin_wallets_list$"),
                 CallbackQueryHandler(show_wallets, pattern=r"^admin_wallets_list_page_\d+$"),
+                CallbackQueryHandler(show_wallet_detail, pattern=r"^admin_wallet_\d+$"),
                 CallbackQueryHandler(show_deposit_list, pattern="^admin_deposits$"),
                 CallbackQueryHandler(show_withdrawal_list, pattern="^admin_withdrawals$"),
                 CallbackQueryHandler(show_admin_menu, pattern="^admin_menu$"),
                 CallbackQueryHandler(lambda u, c: None, pattern="^noop$"),
+            ],
+            AdminState.WALLET_DETAIL: [
+                CallbackQueryHandler(show_user_detail, pattern=r"^admin_user_\d+$"),
+                CallbackQueryHandler(show_wallets, pattern="^admin_wallets_list$"),
+                CallbackQueryHandler(show_admin_menu, pattern="^admin_menu$"),
             ],
             AdminState.DEPOSIT_LIST: [
                 CallbackQueryHandler(show_deposit_list, pattern=r"^admin_deposits_page_\d+$"),
@@ -176,6 +185,11 @@ def create_admin_handler() -> ConversationHandler:
                 CallbackQueryHandler(show_wallet_list, pattern="^admin_wallets$"),
                 CallbackQueryHandler(show_admin_menu, pattern="^admin_menu$"),
                 CallbackQueryHandler(lambda u, c: None, pattern="^noop$"),
+            ],
+            # Builder stats
+            AdminState.BUILDER_STATS: [
+                CallbackQueryHandler(refresh_builder_stats, pattern="^admin_builder_refresh$"),
+                CallbackQueryHandler(show_admin_menu, pattern="^admin_menu$"),
             ],
             # System monitoring
             AdminState.SYSTEM_MONITOR: [

@@ -369,7 +369,8 @@ async def _execute_order_internal(
 
             # Get updated balance
             try:
-                wallet = await context.bot_data["wallet_repo"].get_by_user_id(db_user.id)
+                user_service = context.bot_data["user_service"]
+                wallet = await user_service.get_wallet_by_user_id(db_user.id)
                 from core.blockchain.balance import get_balance_service
                 balance_service = get_balance_service()
                 new_balance = balance_service.get_balance(wallet.address)
@@ -735,7 +736,8 @@ async def confirm_sell(
 
             # Get updated balance
             try:
-                wallet = await context.bot_data["wallet_repo"].get_by_user_id(db_user.id)
+                user_service = context.bot_data["user_service"]
+                wallet = await user_service.get_wallet_by_user_id(db_user.id)
                 from core.blockchain.balance import get_balance_service
                 balance_service = get_balance_service()
                 new_balance = balance_service.get_balance(wallet.address)
@@ -804,12 +806,14 @@ async def confirm_sell(
                 pnl_sign = "+" if profit_loss >= 0 else ""
                 pnl_emoji = "🟢" if profit_loss >= 0 else "🔴"
 
+                # Escape underscores in referral link for Markdown
+                safe_referral_link = referral_link.replace("_", "\\_")
                 caption = (
                     f"{pnl_emoji} *Trade Closed!*\n\n"
                     f"📊 ROI: `{pnl_sign}{roi:.2f}%`\n"
                     f"💰 P&L: `{pnl_sign}${profit_loss:.2f}`\n\n"
                     f"🔗 Trade on Polymarket with PolyBot!\n"
-                    f"👉 {referral_link}\n\n"
+                    f"👉 {safe_referral_link}\n\n"
                     f"_Forward this image to share your trade!_"
                 )
 
