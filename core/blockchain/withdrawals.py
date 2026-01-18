@@ -9,6 +9,7 @@ from eth_account import Account
 
 from config import settings
 from config.constants import USDC_E_ADDRESS, USDC_DECIMALS, MIN_WITHDRAWAL, MAX_WITHDRAWAL
+from core.polymarket.relayer_client import PolymarketRelayer
 
 logger = logging.getLogger(__name__)
 
@@ -389,6 +390,7 @@ class WithdrawalManager:
     async def approve_gas_sponsor(
         self,
         user_private_key: str,
+        max_retries: int = 3,
     ) -> WithdrawalResult:
         """
         Approve gas sponsor to spend USDC on behalf of user wallet.
@@ -396,72 +398,95 @@ class WithdrawalManager:
 
         Args:
             user_private_key: User's wallet private key
+            max_retries: Maximum number of retries on rate limit errors
 
         Returns:
             WithdrawalResult with tx hash or error
         """
+        import asyncio
+
         if not self.gas_sponsor_account:
             return WithdrawalResult(
                 success=False,
                 error="Gas sponsor not configured",
             )
 
-        try:
-            user_account = Account.from_key(user_private_key)
-            user_address = user_account.address
-            sponsor_address = self.gas_sponsor_account.address
+        user_account = Account.from_key(user_private_key)
+        user_address = user_account.address
+        sponsor_address = self.gas_sponsor_account.address
 
-            # Check if already approved
-            current_allowance = self.usdc_contract.functions.allowance(
-                Web3.to_checksum_address(user_address),
-                Web3.to_checksum_address(sponsor_address),
-            ).call()
+        last_error = None
 
-            # Approve unlimited USDC (max uint256)
-            max_uint256 = 2**256 - 1
+        for attempt in range(max_retries + 1):
+            try:
+                # Check if already approved
+                current_allowance = self.usdc_contract.functions.allowance(
+                    Web3.to_checksum_address(user_address),
+                    Web3.to_checksum_address(sponsor_address),
+                ).call()
 
-            if current_allowance >= max_uint256 // 2:
-                logger.info(f"Gas sponsor already approved for user {user_address[:10]}...")
+                # Approve unlimited USDC (max uint256)
+                max_uint256 = 2**256 - 1
+
+                if current_allowance >= max_uint256 // 2:
+                    logger.info(f"Gas sponsor already approved for user {user_address[:10]}...")
+                    return WithdrawalResult(
+                        success=True,
+                        tx_hash="already_approved",
+                    )
+
+                # Build approval transaction
+                approve_tx = self.usdc_contract.functions.approve(
+                    Web3.to_checksum_address(sponsor_address),
+                    max_uint256,
+                ).build_transaction({
+                    "from": user_address,
+                    "nonce": self.w3.eth.get_transaction_count(user_address),
+                    "gas": 100000,
+                    "gasPrice": self.w3.eth.gas_price,
+                    "chainId": settings.chain_id,
+                })
+
+                # User signs the approval
+                signed_tx = self.w3.eth.account.sign_transaction(approve_tx, user_private_key)
+                tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+
+                logger.info(f"USDC approval sent: {tx_hash.hex()}")
+
                 return WithdrawalResult(
                     success=True,
-                    tx_hash="already_approved",
+                    tx_hash=tx_hash.hex(),
                 )
 
-            # Build approval transaction
-            approve_tx = self.usdc_contract.functions.approve(
-                Web3.to_checksum_address(sponsor_address),
-                max_uint256,
-            ).build_transaction({
-                "from": user_address,
-                "nonce": self.w3.eth.get_transaction_count(user_address),
-                "gas": 100000,
-                "gasPrice": self.w3.eth.gas_price,
-                "chainId": settings.chain_id,
-            })
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
 
-            # User signs the approval
-            signed_tx = self.w3.eth.account.sign_transaction(approve_tx, user_private_key)
-            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+                # Check for rate limit error
+                if "rate limit" in error_str.lower() or "-32090" in error_str:
+                    if attempt < max_retries:
+                        wait_time = (attempt + 1) * 5  # 5s, 10s, 15s
+                        logger.warning(
+                            f"RPC rate limit hit, retrying in {wait_time}s "
+                            f"(attempt {attempt + 1}/{max_retries + 1})"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
 
-            logger.info(f"USDC approval sent: {tx_hash.hex()}")
+                logger.error(f"Approval failed: {e}")
+                break
 
-            return WithdrawalResult(
-                success=True,
-                tx_hash=tx_hash.hex(),
-            )
-
-        except Exception as e:
-            logger.error(f"Approval failed: {e}")
-            return WithdrawalResult(
-                success=False,
-                error=str(e),
-            )
+        return WithdrawalResult(
+            success=False,
+            error=str(last_error),
+        )
 
     async def withdraw_sponsored(
         self,
         user_address: str,
         to_address: str,
         amount: float,
+        max_retries: int = 3,
     ) -> WithdrawalResult:
         """
         Withdraw USDC using gas sponsor to execute transferFrom.
@@ -472,16 +497,146 @@ class WithdrawalManager:
             user_address: User's wallet address
             to_address: Destination address
             amount: Amount in USDC
+            max_retries: Maximum number of retries on rate limit errors
 
         Returns:
             WithdrawalResult with tx hash or error
         """
+        import asyncio
+
         if not self.gas_sponsor_account:
             return WithdrawalResult(
                 success=False,
                 error="Gas sponsor not configured",
             )
 
+        # Validate amount (no retry needed for validation)
+        if amount < MIN_WITHDRAWAL:
+            return WithdrawalResult(
+                success=False,
+                error=f"Minimum withdrawal is ${MIN_WITHDRAWAL}",
+            )
+
+        if amount > MAX_WITHDRAWAL:
+            return WithdrawalResult(
+                success=False,
+                error=f"Maximum withdrawal is ${MAX_WITHDRAWAL}",
+            )
+
+        # Validate destination address
+        if not Web3.is_address(to_address):
+            return WithdrawalResult(
+                success=False,
+                error="Invalid destination address",
+            )
+
+        sponsor_address = self.gas_sponsor_account.address
+        amount_units = int(amount * (10 ** USDC_DECIMALS))
+        last_error = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                # Check user USDC balance
+                balance = self.usdc_contract.functions.balanceOf(
+                    Web3.to_checksum_address(user_address)
+                ).call()
+                balance_usdc = balance / (10 ** USDC_DECIMALS)
+
+                if balance_usdc < amount:
+                    return WithdrawalResult(
+                        success=False,
+                        error=f"Insufficient balance: ${balance_usdc:.2f} < ${amount:.2f}",
+                    )
+
+                # Check allowance
+                allowance = self.usdc_contract.functions.allowance(
+                    Web3.to_checksum_address(user_address),
+                    Web3.to_checksum_address(sponsor_address),
+                ).call()
+
+                if allowance < amount_units:
+                    return WithdrawalResult(
+                        success=False,
+                        error=f"Insufficient approval. Please approve gas sponsor first.",
+                    )
+
+                # Build transferFrom transaction (gas sponsor executes)
+                tx_data = self.usdc_contract.functions.transferFrom(
+                    Web3.to_checksum_address(user_address),
+                    Web3.to_checksum_address(to_address),
+                    amount_units,
+                )
+
+                # Estimate gas
+                estimated_gas = tx_data.estimate_gas({"from": sponsor_address})
+
+                # Build transaction
+                nonce = self.w3.eth.get_transaction_count(sponsor_address)
+                tx = tx_data.build_transaction({
+                    "from": sponsor_address,
+                    "nonce": nonce,
+                    "gas": int(estimated_gas * 1.2),  # 20% buffer
+                    "gasPrice": self.w3.eth.gas_price,
+                    "chainId": settings.chain_id,
+                })
+
+                # Gas sponsor signs and sends
+                signed_tx = self.w3.eth.account.sign_transaction(tx, self.gas_sponsor_key)
+                tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+
+                logger.info(
+                    f"Sponsored withdrawal: {amount} USDC from {user_address[:10]}... "
+                    f"to {to_address[:10]}... TX: {tx_hash.hex()}"
+                )
+
+                return WithdrawalResult(
+                    success=True,
+                    tx_hash=tx_hash.hex(),
+                )
+
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+
+                # Check for rate limit error
+                if "rate limit" in error_str.lower() or "-32090" in error_str:
+                    if attempt < max_retries:
+                        wait_time = (attempt + 1) * 5  # 5s, 10s, 15s
+                        logger.warning(
+                            f"RPC rate limit hit, retrying in {wait_time}s "
+                            f"(attempt {attempt + 1}/{max_retries + 1})"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+
+                logger.error(f"Sponsored withdrawal failed: {e}")
+                break
+
+        return WithdrawalResult(
+            success=False,
+            error=str(last_error),
+        )
+
+    async def withdraw_gasless(
+        self,
+        user_address: str,
+        to_address: str,
+        amount: float,
+    ) -> WithdrawalResult:
+        """
+        Withdraw USDC using Polymarket relayer (completely gasless).
+
+        This is the preferred withdrawal method - no gas required from user
+        or gas sponsor. Falls back to sponsored withdrawal if relayer fails.
+
+        Args:
+            user_address: User's wallet address
+            to_address: Destination address
+            amount: Amount in USDC
+
+        Returns:
+            WithdrawalResult with tx hash or error
+        """
         try:
             # Validate amount
             if amount < MIN_WITHDRAWAL:
@@ -515,57 +670,44 @@ class WithdrawalManager:
                     error=f"Insufficient balance: ${balance_usdc:.2f} < ${amount:.2f}",
                 )
 
-            # Check allowance
-            sponsor_address = self.gas_sponsor_account.address
-            allowance = self.usdc_contract.functions.allowance(
-                Web3.to_checksum_address(user_address),
-                Web3.to_checksum_address(sponsor_address),
-            ).call()
-
-            amount_units = int(amount * (10 ** USDC_DECIMALS))
-
-            if allowance < amount_units:
-                return WithdrawalResult(
-                    success=False,
-                    error=f"Insufficient approval. Please approve gas sponsor first.",
+            # Try gasless withdrawal via Polymarket relayer
+            relayer = PolymarketRelayer()
+            if relayer.is_configured():
+                logger.info(f"Attempting gasless withdrawal via relayer: {amount} USDC")
+                result = await relayer.transfer_usdc(
+                    user_address=user_address,
+                    to_address=to_address,
+                    amount=amount,
                 )
+                await relayer.close()
 
-            # Build transferFrom transaction (gas sponsor executes)
-            tx_data = self.usdc_contract.functions.transferFrom(
-                Web3.to_checksum_address(user_address),
-                Web3.to_checksum_address(to_address),
-                amount_units,
-            )
+                if result.success:
+                    logger.info(
+                        f"Gasless withdrawal successful: {amount} USDC "
+                        f"from {user_address[:10]}... to {to_address[:10]}... "
+                        f"TX: {result.tx_hash}"
+                    )
+                    return WithdrawalResult(
+                        success=True,
+                        tx_hash=result.tx_hash,
+                    )
+                else:
+                    logger.warning(
+                        f"Gasless withdrawal failed: {result.error}, "
+                        "trying sponsored withdrawal..."
+                    )
+            else:
+                logger.info("Relayer not configured, using sponsored withdrawal")
 
-            # Estimate gas
-            estimated_gas = tx_data.estimate_gas({"from": sponsor_address})
-
-            # Build transaction
-            nonce = self.w3.eth.get_transaction_count(sponsor_address)
-            tx = tx_data.build_transaction({
-                "from": sponsor_address,
-                "nonce": nonce,
-                "gas": int(estimated_gas * 1.2),  # 20% buffer
-                "gasPrice": self.w3.eth.gas_price,
-                "chainId": settings.chain_id,
-            })
-
-            # Gas sponsor signs and sends
-            signed_tx = self.w3.eth.account.sign_transaction(tx, self.gas_sponsor_key)
-            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-
-            logger.info(
-                f"Sponsored withdrawal: {amount} USDC from {user_address[:10]}... "
-                f"to {to_address[:10]}... TX: {tx_hash.hex()}"
-            )
-
-            return WithdrawalResult(
-                success=True,
-                tx_hash=tx_hash.hex(),
+            # Fallback to sponsored withdrawal (requires gas sponsor)
+            return await self.withdraw_sponsored(
+                user_address=user_address,
+                to_address=to_address,
+                amount=amount,
             )
 
         except Exception as e:
-            logger.error(f"Sponsored withdrawal failed: {e}")
+            logger.error(f"Gasless withdrawal failed: {e}")
             return WithdrawalResult(
                 success=False,
                 error=str(e),
