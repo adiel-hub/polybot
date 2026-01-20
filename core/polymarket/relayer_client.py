@@ -765,7 +765,9 @@ class PolymarketRelayer:
         1. USDC approval for CTF Exchange, Neg Risk CTF Exchange, and Neg Risk Adapter
         2. CTF token operator approval for the same contracts
 
-        Each approval is submitted as a separate Safe transaction.
+        Optimized flow:
+        1. Submit all transactions sequentially (required for Safe nonces)
+        2. Wait for all confirmations in parallel
 
         Args:
             safe_address: Safe wallet address
@@ -777,6 +779,8 @@ class PolymarketRelayer:
         Returns:
             RelayerResult with success status
         """
+        import asyncio
+
         if not self.is_configured():
             return RelayerResult(
                 success=False,
@@ -788,8 +792,9 @@ class PolymarketRelayer:
         # Max uint256 for unlimited approval
         max_amount = 2**256 - 1
         failed_approvals = []
+        pending_txs = []  # List of (label, tx_hash) for parallel confirmation
 
-        # 1. Approve USDC for all spenders
+        # 1. Submit all USDC approvals (must be sequential for nonces)
         for spender in USDC_SPENDERS:
             # First check if already approved on-chain (unless skipping verification)
             if not skip_verification:
@@ -815,14 +820,10 @@ class PolymarketRelayer:
                 failed_approvals.append(f"USDC->{spender[:10]}")
             else:
                 logger.info(f"USDC approval submitted for {spender[:10]}: {result.tx_hash}")
-                # Wait for transaction to be confirmed on-chain
                 if result.tx_hash:
-                    confirmed = await self.wait_for_transaction(result.tx_hash, timeout=60)
-                    if not confirmed:
-                        logger.warning(f"USDC approval tx not confirmed for {spender[:10]}")
-                        failed_approvals.append(f"USDC->{spender[:10]} (unconfirmed)")
+                    pending_txs.append((f"USDC->{spender[:10]}", result.tx_hash))
 
-        # 2. Set CTF operator approval for all operators
+        # 2. Submit all CTF operator approvals (must be sequential for nonces)
         for operator in CTF_OPERATORS:
             # Check if already approved on-chain (unless skipping verification)
             if not skip_verification:
@@ -848,12 +849,36 @@ class PolymarketRelayer:
                 failed_approvals.append(f"CTF->{operator[:10]}")
             else:
                 logger.info(f"CTF operator approval submitted for {operator[:10]}: {result.tx_hash}")
-                # Wait for transaction to be confirmed on-chain
                 if result.tx_hash:
-                    confirmed = await self.wait_for_transaction(result.tx_hash, timeout=60)
+                    pending_txs.append((f"CTF->{operator[:10]}", result.tx_hash))
+
+        # 3. Wait for all confirmations in parallel
+        if pending_txs:
+            logger.info(f"Waiting for {len(pending_txs)} transactions to confirm in parallel...")
+
+            async def wait_for_tx(label: str, tx_hash: str) -> tuple[str, bool]:
+                """Wait for a single transaction and return result."""
+                confirmed = await self.wait_for_transaction(tx_hash, timeout=60)
+                return (label, confirmed)
+
+            # Wait for all transactions in parallel
+            results = await asyncio.gather(
+                *[wait_for_tx(label, tx_hash) for label, tx_hash in pending_txs],
+                return_exceptions=True
+            )
+
+            # Check results
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Transaction confirmation error: {result}")
+                    failed_approvals.append(f"(exception)")
+                else:
+                    label, confirmed = result
                     if not confirmed:
-                        logger.warning(f"CTF operator approval tx not confirmed for {operator[:10]}")
-                        failed_approvals.append(f"CTF->{operator[:10]} (unconfirmed)")
+                        logger.warning(f"{label} tx not confirmed")
+                        failed_approvals.append(f"{label} (unconfirmed)")
+                    else:
+                        logger.info(f"{label} confirmed")
 
         if failed_approvals:
             return RelayerResult(
