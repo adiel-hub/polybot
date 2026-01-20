@@ -184,84 +184,48 @@ class TradingService:
             logger.error(f"Safe deployment error: {e}")
             return False
 
-    async def _ensure_allowance_gasless(
+    async def _setup_missing_approvals(
         self,
-        wallet_address: str,
-        client: PolymarketCLOB,
-        amount: float,
-        private_key: Optional[str] = None,
+        wallet: Wallet,
+        private_key: str,
     ) -> bool:
         """
-        Ensure all required allowances are set for trading.
+        Set up missing approvals for a Safe wallet (fallback if pre-approval failed).
 
-        For Safe wallets, we MUST use the relayer to set allowances since the Safe
-        needs to execute approval transactions with EIP-712 signatures.
-
-        Polymarket requires multiple approvals:
-        1. USDC approval for CTF Exchange, Neg Risk CTF Exchange, Neg Risk Adapter
-        2. CTF token operator approval for the same contracts
+        This is called when a wallet is missing approvals that should have been
+        set up during registration. It's a recovery path, not the normal flow.
 
         Args:
-            wallet_address: User's wallet address
-            client: CLOB client for fallback
-            amount: Amount to approve (used for EOA check)
-            private_key: Private key for signing (required for Safe wallets)
+            wallet: User's wallet object
+            private_key: Decrypted private key for signing
 
         Returns:
-            True if allowances are sufficient or were set successfully
+            True if all approvals are now set, False otherwise
         """
         try:
-            # For Safe wallets, set up ALL required allowances via relayer
-            if client.wallet_type == "SAFE":
-                if not private_key:
-                    logger.error("Private key required for Safe wallet allowance")
-                    return False
+            relayer = PolymarketRelayer()
+            if not relayer.is_configured():
+                logger.error("Relayer not configured - cannot set approvals")
+                return False
 
-                relayer = PolymarketRelayer()
-                if not relayer.is_configured():
-                    logger.error("Relayer not configured - cannot set allowances for Safe wallet")
-                    return False
+            logger.info(f"Setting up missing approvals for Safe {wallet.address[:10]}...")
 
-                # First, check if all approvals (USDC + CTF) already exist on-chain
-                all_approved = await relayer.verify_all_approvals_complete(wallet_address)
-                if all_approved:
-                    logger.info(f"Safe wallet {wallet_address[:10]}... already has all 6 on-chain approvals")
-                    await relayer.close()
-                    return True
+            result = await relayer.setup_all_allowances(
+                safe_address=wallet.address,
+                private_key=private_key,
+            )
+            await relayer.close()
 
-                logger.info(f"Setting up allowances for Safe wallet {wallet_address[:10]}...")
-
-                # Set up all USDC and CTF operator approvals with confirmation
-                result = await relayer.setup_all_allowances(
-                    safe_address=wallet_address,
-                    private_key=private_key,
-                )
-                await relayer.close()
-
-                if result.success:
-                    logger.info(f"Safe wallet allowances set up and verified: {result.data}")
-                    return True
-                else:
-                    logger.error(f"Safe wallet allowance setup failed: {result.error}")
-                    return False
-
-            # For EOA wallets, check current allowance first
-            allowance_info = await client.check_allowance()
-            current_allowance = allowance_info.get("allowance", 0) if allowance_info else 0
-
-            # If allowance is sufficient, no action needed
-            if current_allowance >= amount:
-                logger.debug(f"Allowance sufficient: {current_allowance} >= {amount}")
+            if result.success:
+                logger.info(f"Missing approvals set up for Safe {wallet.address[:10]}...")
+                await self.wallet_repo.mark_usdc_approved(wallet.id)
                 return True
-
-            logger.info(f"Setting USDC allowance for {wallet_address} via CLOB client...")
-
-            # For EOA, use direct CLOB client approval
-            allowance_set = await client.set_allowance()
-            return allowance_set
+            else:
+                logger.error(f"Failed to set up approvals: {result.error}")
+                return False
 
         except Exception as e:
-            logger.error(f"Allowance setup failed: {e}")
+            logger.error(f"Approval setup failed: {e}")
             return False
 
     async def place_order(
@@ -350,17 +314,28 @@ class TradingService:
                         "error": "Failed to deploy Safe wallet. Please try again.",
                     }
 
-            # Verify ALL approvals on-chain (USDC + CTF operators - don't trust DB flag)
+            # Verify ALL approvals on-chain (USDC + CTF operators)
+            # Approvals should have been set during wallet creation
             all_approved_on_chain = await relayer.verify_all_approvals_complete(wallet.address)
-            if not all_approved_on_chain and wallet.usdc_approved:
-                logger.warning(
-                    f"Safe {wallet.address[:10]}... marked as approved in DB but missing on-chain approvals. Resetting flag."
-                )
-                await self.wallet_repo.reset_usdc_approved(wallet.id)
-                # Update local wallet object
-                wallet = await self.wallet_repo.get_by_user_id(wallet.user_id)
-
             await relayer.close()
+
+            if not all_approved_on_chain:
+                if wallet.usdc_approved:
+                    logger.warning(
+                        f"Safe {wallet.address[:10]}... marked as approved in DB but missing on-chain. Resetting flag."
+                    )
+                    await self.wallet_repo.reset_usdc_approved(wallet.id)
+
+                # Set up missing approvals (fallback if pre-approval failed during registration)
+                logger.info(f"Setting up missing approvals for Safe {wallet.address[:10]}...")
+                approvals_ok = await self._setup_missing_approvals(wallet, private_key)
+                if not approvals_ok:
+                    return {
+                        "success": False,
+                        "error": "Failed to set up approvals. Please try again.",
+                    }
+                # Refresh wallet object
+                wallet = await self.wallet_repo.get_by_user_id(wallet.user_id)
 
         # Create order record
         db_order = await self.order_repo.create(
@@ -386,37 +361,6 @@ class TradingService:
                 )
                 return {"success": False, "error": "Trading client error"}
 
-            # Check and set allowance if needed (gasless via relayer)
-            # Skip if we've already approved for this wallet
-            needs_approval = wallet.is_safe_wallet and not wallet.usdc_approved
-            if needs_approval:
-                logger.info(f"Safe wallet {wallet.address[:10]}... needs approval setup")
-                try:
-                    allowance_ok = await self._ensure_allowance_gasless(
-                        wallet_address=wallet.address,
-                        client=client,
-                        amount=amount,
-                        private_key=private_key,  # Required for Safe wallets
-                    )
-                    if not allowance_ok:
-                        await self.order_repo.update_status(
-                            db_order.id,
-                            "FAILED",
-                            error_message="Failed to set USDC allowance",
-                        )
-                        return {
-                            "success": False,
-                            "error": "Failed to approve USDC spending. Please try again.",
-                        }
-                    # Mark approval as done in DB
-                    await self.wallet_repo.mark_usdc_approved(wallet.id)
-                except Exception as e:
-                    logger.error(f"Allowance check/set failed: {e}")
-                    # Continue anyway - the order placement might still work
-            else:
-                if wallet.is_safe_wallet:
-                    logger.info(f"Safe wallet {wallet.address[:10]}... already has approvals (usdc_approved={wallet.usdc_approved})")
-
             # Place order
             if order_type.upper() == "MARKET":
                 result = await client.place_market_order(
@@ -440,27 +384,18 @@ class TradingService:
                     side="BUY",
                 )
 
-            # If allowance error and wallet was marked as approved, reset and retry once
+            # If allowance error, retry once after setting up approvals
             if not result.success and result.error and "allowance" in result.error.lower():
-                if wallet.is_safe_wallet and wallet.usdc_approved:
+                if wallet.is_safe_wallet:
                     logger.warning(
-                        f"Order failed with allowance error but wallet was marked approved. "
-                        f"Resetting approval flag and retrying with comprehensive approvals..."
+                        f"Order failed with allowance error. Setting up approvals and retrying..."
                     )
-                    # Reset the flag and retry
                     await self.wallet_repo.reset_usdc_approved(wallet.id)
 
-                    # Re-run approval setup
-                    allowance_ok = await self._ensure_allowance_gasless(
-                        wallet_address=wallet.address,
-                        client=client,
-                        amount=amount,
-                        private_key=private_key,
-                    )
-                    if allowance_ok:
-                        await self.wallet_repo.mark_usdc_approved(wallet.id)
+                    approvals_ok = await self._setup_missing_approvals(wallet, private_key)
+                    if approvals_ok:
                         # Retry the order
-                        logger.info("Retrying order after setting up comprehensive approvals...")
+                        logger.info("Retrying order after setting up approvals...")
                         if order_type.upper() == "MARKET":
                             result = await client.place_market_order(
                                 token_id=token_id,
