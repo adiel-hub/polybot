@@ -284,6 +284,12 @@ class TradingService:
         if not wallet:
             return {"success": False, "error": "Wallet not found"}
 
+        # Debug: Log wallet type
+        logger.info(
+            f"[PLACE ORDER] User {user_id}: wallet_type={wallet.wallet_type}, "
+            f"is_safe_wallet={wallet.is_safe_wallet}, address={wallet.address[:10]}..."
+        )
+
         # Get real-time balance from blockchain
         from core.blockchain.balance import get_balance_service
         balance_service = get_balance_service()
