@@ -11,7 +11,11 @@ class Wallet:
 
     id: int
     user_id: int
-    address: str
+    address: str  # Primary address (Safe for SAFE type, EOA for EOA type)
+    eoa_address: Optional[str]  # Signer address (for Safe wallets)
+    wallet_type: str  # "EOA" or "SAFE"
+    safe_deployed: bool  # Whether Safe contract is deployed
+    usdc_approved: bool  # Whether USDC allowance is set for CTF Exchange
     encrypted_private_key: bytes
     encryption_salt: bytes
     usdc_balance: float
@@ -24,10 +28,36 @@ class Wallet:
     @classmethod
     def from_row(cls, row) -> "Wallet":
         """Create Wallet from database row."""
+        # Handle both dict-like and sqlite3.Row objects
+        # sqlite3.Row doesn't have .get() method, so use try/except for optional fields
+        try:
+            eoa_address = row["eoa_address"]
+        except (KeyError, IndexError):
+            eoa_address = None
+
+        try:
+            wallet_type = row["wallet_type"] or "EOA"
+        except (KeyError, IndexError):
+            wallet_type = "EOA"
+
+        try:
+            safe_deployed = bool(row["safe_deployed"])
+        except (KeyError, IndexError):
+            safe_deployed = False
+
+        try:
+            usdc_approved = bool(row["usdc_approved"])
+        except (KeyError, IndexError):
+            usdc_approved = False
+
         return cls(
             id=row["id"],
             user_id=row["user_id"],
             address=row["address"],
+            eoa_address=eoa_address,
+            wallet_type=wallet_type,
+            safe_deployed=safe_deployed,
+            usdc_approved=usdc_approved,
             encrypted_private_key=row["encrypted_private_key"],
             encryption_salt=row["encryption_salt"],
             usdc_balance=row["usdc_balance"] or 0.0,
@@ -51,3 +81,18 @@ class Wallet:
             self.api_secret_encrypted,
             self.api_passphrase_encrypted,
         ])
+
+    @property
+    def is_safe_wallet(self) -> bool:
+        """Check if this is a Safe wallet."""
+        return self.wallet_type == "SAFE"
+
+    @property
+    def signer_address(self) -> str:
+        """Get the signer address (EOA that signs transactions)."""
+        return self.eoa_address if self.eoa_address else self.address
+
+    @property
+    def funder_address(self) -> str:
+        """Get the funder address (holds funds, used for CLOB)."""
+        return self.address

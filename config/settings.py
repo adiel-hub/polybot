@@ -51,6 +51,20 @@ class Settings(BaseSettings):
     poly_builder_secret: str = Field(default="", description="Polymarket Builder secret")
     poly_builder_passphrase: str = Field(default="", description="Polymarket Builder passphrase")
 
+    # Polymarket Relayer (uses builder credentials above)
+    relayer_host: str = Field(
+        default="https://relayer-v2.polymarket.com",
+        description="Polymarket Relayer API host"
+    )
+    auto_claim_enabled: bool = Field(
+        default=True,
+        description="Enable automatic claiming of winning positions"
+    )
+    resolution_check_interval: int = Field(
+        default=300,
+        description="Interval in seconds to check for market resolutions (5 minutes)"
+    )
+
     # Operator Commission Settings
     operator_commission_rate: float = Field(default=0.01, description="Commission rate on trades (0.01 = 1%)")
     min_commission_amount: float = Field(default=0.01, description="Minimum commission to charge in USDC")

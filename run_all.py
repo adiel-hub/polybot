@@ -161,6 +161,9 @@ async def run_polynews():
             logger.warning("No bot token for Polynews - disabled")
             return
 
+        # Wait for main bot to initialize the database first to avoid locking
+        await asyncio.sleep(2)
+
         # Initialize database (reuse same path)
         db_path = Path(settings.database_path)
         db = Database(str(db_path))
@@ -333,6 +336,9 @@ def _load_whale_bot_modules():
 async def run_whalebot():
     """Run the Whale Alert bot."""
     logger = logging.getLogger("whalebot.main")
+
+    # Stagger startup to avoid resource contention
+    await asyncio.sleep(1)
 
     try:
         # Load whale-bot modules with proper patching

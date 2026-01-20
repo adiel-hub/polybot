@@ -61,6 +61,9 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL UNIQUE,
                 address TEXT NOT NULL UNIQUE,
+                eoa_address TEXT,
+                wallet_type TEXT DEFAULT 'EOA' CHECK(wallet_type IN ('EOA', 'SAFE')),
+                safe_deployed INTEGER DEFAULT 0,
                 encrypted_private_key BLOB NOT NULL,
                 encryption_salt BLOB NOT NULL,
                 usdc_balance REAL DEFAULT 0.0,
@@ -314,6 +317,19 @@ class Database:
         await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_referrer_id ON users(referrer_id)")
 
+        # Add Safe wallet columns to wallets table if they don't exist
+        cursor = await conn.execute("PRAGMA table_info(wallets)")
+        wallet_columns = [row[1] for row in await cursor.fetchall()]
+
+        if "eoa_address" not in wallet_columns:
+            await conn.execute("ALTER TABLE wallets ADD COLUMN eoa_address TEXT")
+        if "wallet_type" not in wallet_columns:
+            await conn.execute("ALTER TABLE wallets ADD COLUMN wallet_type TEXT DEFAULT 'EOA'")
+        if "safe_deployed" not in wallet_columns:
+            await conn.execute("ALTER TABLE wallets ADD COLUMN safe_deployed INTEGER DEFAULT 0")
+        if "usdc_approved" not in wallet_columns:
+            await conn.execute("ALTER TABLE wallets ADD COLUMN usdc_approved INTEGER DEFAULT 0")
+
         # Posted markets table (for news bot)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS posted_markets (
@@ -332,6 +348,42 @@ class Database:
         """)
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_posted_markets_condition_id ON posted_markets(condition_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_posted_markets_posted_at ON posted_markets(posted_at)")
+
+        # Position claims table (track auto-claim history)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS position_claims (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                position_id INTEGER NOT NULL,
+                market_condition_id TEXT NOT NULL,
+                winning_outcome TEXT NOT NULL,
+                amount_claimed REAL NOT NULL,
+                tx_hash TEXT,
+                status TEXT DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'CLAIMED', 'FAILED')),
+                error_message TEXT,
+                claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                retry_count INTEGER DEFAULT 0,
+                next_retry_at TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_position_claims_user_id ON position_claims(user_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_position_claims_status ON position_claims(status)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_position_claims_market ON position_claims(market_condition_id)")
+
+        # Resolved markets cache (track market resolution status)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS resolved_markets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                condition_id TEXT UNIQUE NOT NULL,
+                winning_outcome TEXT NOT NULL,
+                resolved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                processed INTEGER DEFAULT 0
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_resolved_markets_condition ON resolved_markets(condition_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_resolved_markets_processed ON resolved_markets(processed)")
 
         await conn.commit()
         logger.info("Database tables initialized")

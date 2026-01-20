@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from bot.conversations.states import ConversationState
 from bot.keyboards.common import get_back_keyboard
+from services.claim_service import ClaimService
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,18 @@ async def show_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             InlineKeyboardButton(
                 button_label,
                 callback_data=f"position_{position.id}",
+            )
+        ])
+
+    # Check for pending claims
+    claim_service = ClaimService(db=context.bot_data["db"])
+    pending_claims = await claim_service.get_pending_claims(db_user.id)
+
+    if pending_claims:
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🔄 Claim {len(pending_claims)} Pending",
+                callback_data="pending_claims",
             )
         ])
 
@@ -297,5 +310,151 @@ async def handle_position_callback(
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
+
+    return ConversationState.PORTFOLIO_VIEW
+
+
+async def show_pending_claims(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Show pending claims that need manual claiming."""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    user_service = context.bot_data["user_service"]
+
+    db_user = await user_service.get_user(user.id)
+    if not db_user:
+        await query.edit_message_text("❌ User not found.")
+        return ConversationState.MAIN_MENU
+
+    claim_service = ClaimService(db=context.bot_data["db"])
+    pending_claims = await claim_service.get_pending_claims(db_user.id)
+
+    if not pending_claims:
+        await query.edit_message_text(
+            "✅ *No Pending Claims*\n\n"
+            "All your winning positions have been claimed.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back to Portfolio", callback_data="menu_portfolio")],
+            ]),
+        )
+        return ConversationState.PORTFOLIO_VIEW
+
+    message_lines = [
+        "🔄 *Pending Claims*",
+        "",
+        "These winning positions need to be claimed:",
+        "",
+    ]
+
+    keyboard = []
+
+    for claim in pending_claims:
+        market_question = claim.get("market_question", "Unknown Market")
+        if len(market_question) > 30:
+            market_question = market_question[:30] + "..."
+
+        amount = claim.get("size", 0)
+        message_lines.append(f"• {market_question}")
+        message_lines.append(f"  💰 Amount: ${amount:.2f}")
+        message_lines.append("")
+
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🔄 Claim ${amount:.2f}",
+                callback_data=f"manual_claim_{claim['position_id']}",
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton("🔙 Back to Portfolio", callback_data="menu_portfolio"),
+    ])
+
+    await query.edit_message_text(
+        "\n".join(message_lines),
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+    return ConversationState.PORTFOLIO_VIEW
+
+
+async def handle_manual_claim(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Handle manual claim button press."""
+    query = update.callback_query
+    await query.answer("⏳ Processing claim...")
+
+    callback_data = query.data
+    position_id = int(callback_data.replace("manual_claim_", ""))
+
+    user = update.effective_user
+    user_service = context.bot_data["user_service"]
+
+    db_user = await user_service.get_user(user.id)
+    if not db_user:
+        await query.edit_message_text("❌ User not found.")
+        return ConversationState.MAIN_MENU
+
+    # Get bot send_message for notifications
+    async def send_message(chat_id, text, parse_mode=None, reply_markup=None):
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+
+    claim_service = ClaimService(
+        db=context.bot_data["db"],
+        bot_send_message=send_message,
+    )
+
+    try:
+        result = await claim_service.manual_claim(
+            user_id=db_user.id,
+            position_id=position_id,
+        )
+
+        if result.success:
+            await query.edit_message_text(
+                f"🎉 *Claim Successful!*\n\n"
+                f"💰 Amount: *${result.amount_claimed:.2f}*\n"
+                f"🔗 TX: `{result.tx_hash[:16]}...`\n\n"
+                f"The funds have been added to your wallet.",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 Back to Portfolio", callback_data="menu_portfolio")],
+                ]),
+            )
+        else:
+            await query.edit_message_text(
+                f"❌ *Claim Failed*\n\n"
+                f"Error: {result.error}\n\n"
+                f"The claim will be retried automatically. "
+                f"You can also try again later.",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Try Again", callback_data=f"manual_claim_{position_id}")],
+                    [InlineKeyboardButton("🔙 Back to Portfolio", callback_data="menu_portfolio")],
+                ]),
+            )
+
+    except Exception as e:
+        logger.error(f"Manual claim failed: {e}")
+        await query.edit_message_text(
+            f"❌ *Claim Error*\n\n"
+            f"An error occurred. Please try again later.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back to Portfolio", callback_data="menu_portfolio")],
+            ]),
+        )
 
     return ConversationState.PORTFOLIO_VIEW

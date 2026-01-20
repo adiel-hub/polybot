@@ -11,6 +11,8 @@ from core.websocket.price_subscriber import PriceSubscriber
 from core.websocket.deposit_subscriber import DepositSubscriber
 from core.websocket.copy_trade_subscriber import CopyTradeSubscriber
 from core.websocket.order_fill_subscriber import OrderFillSubscriber
+from core.websocket.resolution_subscriber import ResolutionSubscriber
+from services.claim_service import ClaimService
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,8 @@ class WebSocketService:
         self.deposit_subscriber: DepositSubscriber = None
         self.copy_trade_subscriber: CopyTradeSubscriber = None
         self.order_fill_subscriber: OrderFillSubscriber = None
+        self.resolution_subscriber: ResolutionSubscriber = None
+        self.claim_service: ClaimService = None
 
     async def start(self) -> None:
         """Initialize and start all WebSocket subscriptions."""
@@ -90,14 +94,87 @@ class WebSocketService:
         )
         await self.order_fill_subscriber.start()
 
+        # Initialize claim service for auto-claim
+        self.claim_service = ClaimService(
+            db=self.db,
+            bot_send_message=self.bot_send_message,
+        )
+
+        # Initialize resolution subscriber (market resolution detection)
+        self.resolution_subscriber = ResolutionSubscriber(
+            db=self.db,
+            poll_interval=getattr(settings, "resolution_check_interval", 300),
+            on_resolution_callback=self._handle_market_resolution,
+        )
+        await self.resolution_subscriber.start()
+
         # Start the WebSocket manager (connects all registered connections)
         await self.ws_manager.start()
 
         logger.info("WebSocket service started successfully")
 
+    async def _handle_market_resolution(
+        self,
+        condition_id: str,
+        winning_outcome: str,
+    ) -> None:
+        """
+        Handle market resolution by triggering auto-claims.
+
+        Called by ResolutionSubscriber when a market resolves.
+
+        Args:
+            condition_id: Resolved market condition ID
+            winning_outcome: "YES" or "NO"
+        """
+        if not self.claim_service:
+            logger.warning("Claim service not initialized, skipping auto-claim")
+            return
+
+        try:
+            logger.info(
+                f"Processing auto-claims for market {condition_id[:16]}... "
+                f"(winner: {winning_outcome})"
+            )
+            results = await self.claim_service.handle_market_resolution(
+                condition_id=condition_id,
+                winning_outcome=winning_outcome,
+            )
+
+            successful = sum(1 for r in results if r.success)
+            logger.info(
+                f"Auto-claim complete: {successful}/{len(results)} positions claimed "
+                f"for market {condition_id[:16]}..."
+            )
+
+            # Also retry any pending claims from previous failures
+            await self._retry_pending_claims()
+
+        except Exception as e:
+            logger.error(f"Auto-claim failed for market {condition_id[:16]}...: {e}")
+
+    async def _retry_pending_claims(self) -> None:
+        """Retry pending claims that previously failed."""
+        if not self.claim_service:
+            return
+
+        try:
+            results = await self.claim_service.retry_pending_claims()
+            if results:
+                successful = sum(1 for r in results if r.success)
+                logger.info(f"Retry claims complete: {successful}/{len(results)} succeeded")
+        except Exception as e:
+            logger.error(f"Retry pending claims failed: {e}")
+
     async def stop(self) -> None:
         """Stop all WebSocket connections."""
         logger.info("Stopping WebSocket service...")
+
+        if self.resolution_subscriber:
+            await self.resolution_subscriber.stop()
+
+        if self.claim_service:
+            await self.claim_service.close()
 
         if self.deposit_subscriber:
             await self.deposit_subscriber.stop()

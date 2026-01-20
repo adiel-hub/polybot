@@ -417,9 +417,28 @@ async def _execute_order_internal(
 
     except Exception as e:
         logger.error(f"Order execution failed: {e}")
+
+        # Store order details for retry
+        context.user_data["retry_order"] = {
+            "market": market,
+            "order_type": order_type,
+            "outcome": outcome,
+            "amount": amount,
+            "limit_price": limit_price,
+            "token_id": token_id,
+        }
+
+        keyboard = [
+            [InlineKeyboardButton("🔄 Retry Order", callback_data="order_retry")],
+            [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
+        ]
+
         await message_handler(
-            f"❌ Order failed: {str(e)}\n\n🔄 Please try again."
+            f"❌ Order failed: {str(e)}\n\n"
+            f"This may be a temporary network issue.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
+        return ConversationState.MAIN_MENU
 
     # Clear order data from context
     for key in ["order_type", "outcome", "amount", "limit_price", "token_id", "current_market"]:
@@ -447,6 +466,46 @@ async def confirm_order(
 
     # Execute order using internal helper
     return await _execute_order_internal(update, context, db_user)
+
+
+async def handle_order_retry(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Retry a failed order with the same parameters."""
+    query = update.callback_query
+    await query.answer("Retrying order...")
+
+    user = update.effective_user
+    user_service = context.bot_data["user_service"]
+
+    # Get retry order data
+    retry_order = context.user_data.get("retry_order")
+    if not retry_order:
+        await query.edit_message_text(
+            "❌ Order data not found. Please start a new order."
+        )
+        return ConversationState.MAIN_MENU
+
+    # Get user
+    db_user = await user_service.get_user(user.id)
+    if not db_user:
+        await query.edit_message_text("❌ User not found. Please /start again.")
+        return ConversationState.MAIN_MENU
+
+    # Restore order data to context
+    context.user_data["current_market"] = retry_order["market"]
+    context.user_data["order_type"] = retry_order["order_type"]
+    context.user_data["outcome"] = retry_order["outcome"]
+    context.user_data["amount"] = retry_order["amount"]
+    context.user_data["limit_price"] = retry_order["limit_price"]
+    context.user_data["token_id"] = retry_order["token_id"]
+
+    # Clear retry data
+    context.user_data.pop("retry_order", None)
+
+    # Execute order
+    return await _execute_order_internal(update, context, db_user, "🔄 *Retrying Order...*")
 
 
 async def handle_sell_position(

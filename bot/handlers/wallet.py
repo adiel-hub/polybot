@@ -3,6 +3,7 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from telegram.error import BadRequest
 
 from bot.conversations.states import ConversationState
 from bot.keyboards.main_menu import get_wallet_keyboard
@@ -46,11 +47,15 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     keyboard = get_wallet_keyboard()
 
     if query:
-        await query.edit_message_text(
-            text,
-            reply_markup=keyboard,
-            parse_mode="Markdown",
-        )
+        try:
+            await query.edit_message_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode="Markdown",
+            )
+        except BadRequest as e:
+            if "message is not modified" not in str(e).lower():
+                raise
     else:
         await update.message.reply_text(
             text,

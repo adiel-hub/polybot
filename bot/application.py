@@ -31,6 +31,7 @@ from bot.handlers.trading import (
     handle_amount_input,
     handle_price_input,
     confirm_order,
+    handle_order_retry,
     handle_sell_position,
     handle_sell_percentage,
     handle_sell_amount_input,
@@ -44,7 +45,12 @@ from bot.handlers.wallet import (
     handle_withdraw_address,
     confirm_withdraw,
 )
-from bot.handlers.portfolio import show_portfolio, handle_position_callback
+from bot.handlers.portfolio import (
+    show_portfolio,
+    handle_position_callback,
+    show_pending_claims,
+    handle_manual_claim,
+)
 from bot.handlers.orders import show_orders, show_order_details, handle_cancel_order
 from bot.handlers.copy_trading import (
     show_copy_trading,
@@ -144,6 +150,7 @@ async def create_application(db: Database) -> Application:
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^noop$"),
                 CallbackQueryHandler(handle_share_trade, pattern="^share_trade$"),
+                CallbackQueryHandler(handle_order_retry, pattern="^order_retry$"),
             ],
 
             # Market browsing
@@ -186,6 +193,7 @@ async def create_application(db: Database) -> Application:
             ],
             ConversationState.CONFIRM_ORDER: [
                 CallbackQueryHandler(confirm_order, pattern="^order_confirm$"),
+                CallbackQueryHandler(handle_order_retry, pattern="^order_retry$"),
                 CallbackQueryHandler(show_market_detail, pattern="^market_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],
@@ -215,6 +223,8 @@ async def create_application(db: Database) -> Application:
                 CallbackQueryHandler(handle_sell_position, pattern="^sell_position_"),
                 CallbackQueryHandler(handle_stop_loss_callback, pattern="^stoploss_"),
                 CallbackQueryHandler(handle_stop_loss_callback, pattern="^remove_stoploss_"),
+                CallbackQueryHandler(show_pending_claims, pattern="^pending_claims$"),
+                CallbackQueryHandler(handle_manual_claim, pattern="^manual_claim_"),
                 CallbackQueryHandler(handle_menu_callback, pattern="^menu_"),
             ],
 

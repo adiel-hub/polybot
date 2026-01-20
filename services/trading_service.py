@@ -34,6 +34,9 @@ class TradingService:
         self.wallet_repo = WalletRepository(db)
         self.encryption = encryption
 
+        # Cache CLOB clients per user_id to avoid reinitializing on every trade
+        self._clob_clients: Dict[int, PolymarketCLOB] = {}
+
         # Import ReferralService here to avoid circular dependency
         from services.referral_service import ReferralService
         self.referral_service = ReferralService(db)
@@ -43,7 +46,11 @@ class TradingService:
         self.commission_service = CommissionService(db)
 
     async def _get_clob_client(self, user_id: int) -> Optional[PolymarketCLOB]:
-        """Get CLOB client for user."""
+        """Get CLOB client for user (cached per user)."""
+        # Return cached client if available
+        if user_id in self._clob_clients:
+            return self._clob_clients[user_id]
+
         wallet = await self.wallet_repo.get_by_user_id(user_id)
         if not wallet:
             return None
@@ -114,7 +121,17 @@ class TradingService:
                     enc_pass,
                 )
 
+        # Cache the client for future use
+        self._clob_clients[user_id] = client
+        logger.info(f"CLOB client cached for user {user_id}")
+
         return client
+
+    def invalidate_clob_client(self, user_id: int) -> None:
+        """Remove cached CLOB client (e.g., if credentials need refresh)."""
+        if user_id in self._clob_clients:
+            del self._clob_clients[user_id]
+            logger.info(f"CLOB client cache invalidated for user {user_id}")
 
     async def _ensure_safe_deployed(
         self,
