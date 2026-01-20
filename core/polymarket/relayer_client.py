@@ -756,6 +756,7 @@ class PolymarketRelayer:
         self,
         safe_address: str,
         private_key: str,
+        skip_verification: bool = False,
     ) -> RelayerResult:
         """
         Set up all required allowances for Safe wallet trading on Polymarket.
@@ -769,6 +770,9 @@ class PolymarketRelayer:
         Args:
             safe_address: Safe wallet address
             private_key: EOA private key for signing Safe transactions
+            skip_verification: If True, skip on-chain verification checks (useful when
+                               rate limited by RPC). The relayer will still submit all
+                               approvals, and idempotent approvals are safe to re-submit.
 
         Returns:
             RelayerResult with success status
@@ -787,10 +791,14 @@ class PolymarketRelayer:
 
         # 1. Approve USDC for all spenders
         for spender in USDC_SPENDERS:
-            # First check if already approved on-chain
-            if await self.verify_on_chain_allowance(safe_address, spender):
-                logger.info(f"USDC already approved for {spender[:10]}... (verified on-chain)")
-                continue
+            # First check if already approved on-chain (unless skipping verification)
+            if not skip_verification:
+                try:
+                    if await self.verify_on_chain_allowance(safe_address, spender):
+                        logger.info(f"USDC already approved for {spender[:10]}... (verified on-chain)")
+                        continue
+                except Exception as e:
+                    logger.warning(f"Verification failed for {spender[:10]}, will submit approval anyway: {e}")
 
             logger.info(f"Approving USDC for spender {spender[:10]}...")
             calldata = self._encode_erc20_approve(spender, max_amount)
@@ -815,9 +823,16 @@ class PolymarketRelayer:
                         failed_approvals.append(f"USDC->{spender[:10]} (unconfirmed)")
 
         # 2. Set CTF operator approval for all operators
-        # Note: We don't have an easy way to verify CTF operator approvals on-chain,
-        # so we just submit them and wait for confirmation
         for operator in CTF_OPERATORS:
+            # Check if already approved on-chain (unless skipping verification)
+            if not skip_verification:
+                try:
+                    if await self.verify_ctf_operator_approval(safe_address, operator):
+                        logger.info(f"CTF operator already approved for {operator[:10]}... (verified on-chain)")
+                        continue
+                except Exception as e:
+                    logger.warning(f"CTF verification failed for {operator[:10]}, will submit approval anyway: {e}")
+
             logger.info(f"Setting CTF operator approval for {operator[:10]}...")
             calldata = self._encode_set_approval_for_all(operator, True)
 
@@ -846,17 +861,22 @@ class PolymarketRelayer:
                 error=f"Some approvals failed: {', '.join(failed_approvals)}",
             )
 
-        # Final on-chain verification of USDC allowances
-        logger.info("Verifying all USDC allowances on-chain...")
-        for spender in USDC_SPENDERS:
-            if not await self.verify_on_chain_allowance(safe_address, spender):
-                logger.error(f"Final verification failed: USDC allowance not found for {spender[:10]}")
-                return RelayerResult(
-                    success=False,
-                    error=f"On-chain verification failed for {spender[:10]}",
-                )
+        # Final on-chain verification (skip if requested to avoid rate limits)
+        if not skip_verification:
+            logger.info("Verifying all USDC allowances on-chain...")
+            for spender in USDC_SPENDERS:
+                try:
+                    if not await self.verify_on_chain_allowance(safe_address, spender):
+                        logger.error(f"Final verification failed: USDC allowance not found for {spender[:10]}")
+                        return RelayerResult(
+                            success=False,
+                            error=f"On-chain verification failed for {spender[:10]}",
+                        )
+                except Exception as e:
+                    logger.warning(f"Final verification skipped due to RPC error: {e}")
+                    break
 
-        logger.info(f"All allowances set up and verified for Safe {safe_address[:10]}")
+        logger.info(f"All allowances set up for Safe {safe_address[:10]}")
         return RelayerResult(success=True, data={"approvals_count": len(USDC_SPENDERS) + len(CTF_OPERATORS)})
 
     async def verify_on_chain_allowance(

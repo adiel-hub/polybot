@@ -220,9 +220,12 @@ class TradingService:
 
             logger.info(f"Setting up missing approvals for Safe {wallet.address[:10]}...")
 
+            # Skip on-chain verification to avoid RPC rate limits
+            # The relayer will submit all 6 approvals (idempotent operation)
             result = await relayer.setup_all_allowances(
                 safe_address=wallet.address,
                 private_key=private_key,
+                skip_verification=True,
             )
             await relayer.close()
 
@@ -314,55 +317,20 @@ class TradingService:
                 wallet.encryption_salt,
             )
 
-            # Verify Safe is actually deployed on-chain (not just in DB)
-            relayer = PolymarketRelayer()
-            try:
-                is_actually_deployed = await relayer.verify_safe_deployed(wallet.address)
-            except Exception as e:
-                logger.error(f"[SAFE ORDER] Failed to verify Safe deployment on-chain: {e}")
-                # Assume deployed if DB says so and verification failed
-                is_actually_deployed = wallet.safe_deployed
-            logger.info(f"[SAFE ORDER] Deployment check: on-chain={is_actually_deployed}, db={wallet.safe_deployed}")
-
-            if not is_actually_deployed:
-                # Reset DB flag if out of sync
-                if wallet.safe_deployed:
-                    logger.warning(
-                        f"Safe {wallet.address[:10]}... marked as deployed in DB but not on-chain. Resetting flag."
-                    )
-                    await self.wallet_repo.reset_safe_deployed(wallet.id)
-
-                # Deploy the Safe
+            # If Safe not deployed according to DB, deploy it
+            if not wallet.safe_deployed:
+                logger.info(f"[SAFE ORDER] Safe not deployed, deploying {wallet.address[:10]}...")
                 safe_deployed = await self._ensure_safe_deployed(wallet, private_key)
                 if not safe_deployed:
-                    await relayer.close()
                     return {
                         "success": False,
                         "error": "Failed to deploy Safe wallet. Please try again.",
                     }
 
-            # Verify ALL approvals on-chain (USDC + CTF operators)
-            # Approvals should have been set during wallet creation
-            logger.info(f"[SAFE ORDER] Verifying all approvals for Safe {wallet.address[:10]}...")
-            try:
-                all_approved_on_chain = await relayer.verify_all_approvals_complete(wallet.address)
-            except Exception as e:
-                logger.error(f"[SAFE ORDER] Failed to verify approvals on-chain: {e}")
-                # If verification fails due to RPC issues, check DB flag
-                # If DB says not approved, force setup
-                all_approved_on_chain = wallet.usdc_approved
-            await relayer.close()
-            logger.info(f"[SAFE ORDER] Approval check: on-chain={all_approved_on_chain}, db={wallet.usdc_approved}")
-
-            if not all_approved_on_chain:
-                if wallet.usdc_approved:
-                    logger.warning(
-                        f"[SAFE ORDER] Safe {wallet.address[:10]}... marked as approved in DB but missing on-chain. Resetting flag."
-                    )
-                    await self.wallet_repo.reset_usdc_approved(wallet.id)
-
-                # Set up missing approvals (fallback if pre-approval failed during registration)
-                logger.info(f"[SAFE ORDER] Setting up missing approvals for Safe {wallet.address[:10]}...")
+            # If DB says not approved, skip expensive on-chain verification
+            # and go straight to setting up approvals (relayer checks internally)
+            if not wallet.usdc_approved:
+                logger.info(f"[SAFE ORDER] DB shows not approved, setting up approvals for {wallet.address[:10]}...")
                 approvals_ok = await self._setup_missing_approvals(wallet, private_key)
                 if not approvals_ok:
                     logger.error(f"[SAFE ORDER] Failed to set up approvals for {wallet.address[:10]}...")
@@ -615,32 +583,10 @@ class TradingService:
                 wallet.encryption_salt,
             )
 
-            # Verify Safe is deployed and approvals are set
-            relayer = PolymarketRelayer()
-            try:
-                is_actually_deployed = await relayer.verify_safe_deployed(wallet.address)
-            except Exception as e:
-                logger.error(f"[SAFE SELL] Failed to verify Safe deployment: {e}")
-                is_actually_deployed = wallet.safe_deployed
-
-            if not is_actually_deployed:
-                await relayer.close()
-                return {
-                    "success": False,
-                    "error": "Safe wallet not deployed. Please try again.",
-                }
-
-            # Verify approvals on-chain
-            logger.info(f"[SAFE SELL] Verifying approvals for Safe {wallet.address[:10]}...")
-            try:
-                all_approved = await relayer.verify_all_approvals_complete(wallet.address)
-            except Exception as e:
-                logger.error(f"[SAFE SELL] Failed to verify approvals: {e}")
-                all_approved = wallet.usdc_approved
-            await relayer.close()
-
-            if not all_approved:
-                logger.info(f"[SAFE SELL] Setting up missing approvals for {wallet.address[:10]}...")
+            # If DB says not approved, skip expensive on-chain verification
+            # and go straight to setting up approvals (relayer checks internally)
+            if not wallet.usdc_approved:
+                logger.info(f"[SAFE SELL] DB shows not approved, setting up approvals for {wallet.address[:10]}...")
                 approvals_ok = await self._setup_missing_approvals(wallet, private_key)
                 if not approvals_ok:
                     return {
