@@ -46,8 +46,15 @@ class TradingService:
         self.commission_service = CommissionService(db)
 
     async def _get_clob_client(self, user_id: int) -> Optional[PolymarketCLOB]:
-        """Get CLOB client for user (cached per user)."""
-        # Return cached client if available
+        """
+        Get CLOB client for user.
+
+        Priority:
+        1. Return from memory cache if available
+        2. Load from DB (API credentials) and cache
+        3. Initialize new credentials, save to DB, and cache (fallback)
+        """
+        # 1. Return cached client if available
         if user_id in self._clob_clients:
             return self._clob_clients[user_id]
 
@@ -60,15 +67,14 @@ class TradingService:
             wallet.encryption_salt,
         )
 
-        # Use wallet type to determine signature type
-        # Safe wallets use signature_type=2, EOA uses signature_type=0
+        # Create CLOB client (no API call yet)
         client = PolymarketCLOB(
             private_key=private_key,
-            funder_address=wallet.funder_address,  # Safe address for Safe wallets
+            funder_address=wallet.funder_address,
             wallet_type=wallet.wallet_type,
         )
 
-        # Initialize API credentials if we have them stored
+        # 2. Load API credentials from DB if available
         if wallet.has_api_credentials:
             try:
                 api_key = self.encryption.decrypt(
@@ -84,32 +90,19 @@ class TradingService:
                     wallet.encryption_salt,
                 )
                 client.set_api_credentials(api_key, api_secret, api_passphrase)
+                logger.info(f"CLOB client loaded from DB for user {user_id}")
             except Exception as e:
-                # Decryption failed - likely due to changed encryption key
-                # Regenerate API credentials
-                logger.warning(f"Failed to decrypt API credentials, regenerating: {e}")
-                await client.initialize()
+                logger.warning(f"Failed to decrypt API credentials: {e}")
+                # Fall through to initialize new credentials
+                wallet.api_key_encrypted = None  # Force re-initialization
 
-                if client.api_credentials:
-                    creds = client.api_credentials
-                    # Use wallet's existing salt for API credentials
-                    enc_key = self.encryption.encrypt_with_salt(creds["api_key"], wallet.encryption_salt)
-                    enc_secret = self.encryption.encrypt_with_salt(creds["api_secret"], wallet.encryption_salt)
-                    enc_pass = self.encryption.encrypt_with_salt(creds["api_passphrase"], wallet.encryption_salt)
-
-                    await self.wallet_repo.update_api_credentials(
-                        wallet.id,
-                        enc_key,
-                        enc_secret,
-                        enc_pass,
-                    )
-        else:
-            # Initialize and store credentials
+        # 3. Initialize and save to DB if no credentials loaded
+        if not wallet.has_api_credentials or client._api_creds is None:
+            logger.info(f"Initializing new CLOB credentials for user {user_id}")
             await client.initialize()
 
             if client.api_credentials:
                 creds = client.api_credentials
-                # Use wallet's existing salt for API credentials
                 enc_key = self.encryption.encrypt_with_salt(creds["api_key"], wallet.encryption_salt)
                 enc_secret = self.encryption.encrypt_with_salt(creds["api_secret"], wallet.encryption_salt)
                 enc_pass = self.encryption.encrypt_with_salt(creds["api_passphrase"], wallet.encryption_salt)
@@ -120,10 +113,10 @@ class TradingService:
                     enc_secret,
                     enc_pass,
                 )
+                logger.info(f"CLOB credentials saved to DB for user {user_id}")
 
-        # Cache the client for future use
+        # Cache the client
         self._clob_clients[user_id] = client
-        logger.info(f"CLOB client cached for user {user_id}")
 
         return client
 
