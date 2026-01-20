@@ -298,6 +298,8 @@ class TradingService:
         # Decrypt private key for Safe wallet operations (deployment + allowance)
         private_key = None
         if wallet.is_safe_wallet:
+            logger.info(f"Processing Safe wallet {wallet.address[:10]}... (deployed={wallet.safe_deployed}, approved={wallet.usdc_approved})")
+
             private_key = self.encryption.decrypt(
                 wallet.encrypted_private_key,
                 wallet.encryption_salt,
@@ -306,6 +308,7 @@ class TradingService:
             # Verify Safe is actually deployed on-chain (not just in DB)
             relayer = PolymarketRelayer()
             is_actually_deployed = await relayer.verify_safe_deployed(wallet.address)
+            logger.info(f"Safe deployment check: on-chain={is_actually_deployed}, db={wallet.safe_deployed}")
 
             if not is_actually_deployed:
                 # Reset DB flag if out of sync
@@ -326,8 +329,10 @@ class TradingService:
 
             # Verify ALL approvals on-chain (USDC + CTF operators)
             # Approvals should have been set during wallet creation
+            logger.info(f"Verifying all approvals for Safe {wallet.address[:10]}...")
             all_approved_on_chain = await relayer.verify_all_approvals_complete(wallet.address)
             await relayer.close()
+            logger.info(f"Approval check: on-chain={all_approved_on_chain}, db={wallet.usdc_approved}")
 
             if not all_approved_on_chain:
                 if wallet.usdc_approved:

@@ -39,6 +39,24 @@ async def show_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     balance_service = get_balance_service()
     balance = balance_service.get_balance(wallet.address) if wallet else 0
 
+    # Fetch current prices for positions that don't have them
+    if positions:
+        market_service = context.bot_data["market_service"]
+        from database.repositories.position_repo import PositionRepository
+        position_repo = PositionRepository(context.bot_data["db"])
+
+        for pos in positions:
+            if pos.current_price is None:
+                try:
+                    current_price = await market_service.get_token_price(pos.token_id)
+                    if current_price is not None:
+                        await position_repo.update_current_price(pos.id, current_price)
+                        pos.current_price = current_price
+                        pos.current_value = pos.size * current_price
+                        pos.unrealized_pnl = (current_price - pos.average_entry_price) * pos.size
+                except Exception as e:
+                    logger.warning(f"Failed to fetch price for position {pos.id}: {e}")
+
     if not positions:
         text = (
             "📊 *Portfolio*\n\n"
@@ -182,6 +200,18 @@ async def handle_position_callback(
     if not position or position.user_id != db_user.id:
         await query.edit_message_text("❌ Position not found.")
         return await show_portfolio(update, context)
+
+    # Fetch current price if not set or stale
+    if position.current_price is None:
+        try:
+            market_service = context.bot_data["market_service"]
+            current_price = await market_service.get_token_price(position.token_id)
+            if current_price is not None:
+                await position_repo.update_current_price(position.id, current_price)
+                # Refresh position with updated price
+                position = await position_repo.get_by_id(position_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch current price for position {position_id}: {e}")
 
     # Store position ID for further actions
     context.user_data["selected_position_id"] = position_id
