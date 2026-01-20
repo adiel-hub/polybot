@@ -27,6 +27,11 @@ class UserService:
         self.user_repo = UserRepository(db)
         self.wallet_repo = WalletRepository(db)
         self.encryption = encryption
+        self._trading_service = None  # Set via set_trading_service() to avoid circular import
+
+    def set_trading_service(self, trading_service) -> None:
+        """Set trading service reference for CLOB client pre-initialization."""
+        self._trading_service = trading_service
 
     async def get_user(self, telegram_id: int) -> Optional[User]:
         """Get user by Telegram ID."""
@@ -103,7 +108,21 @@ class UserService:
             )
         )
 
+        # Pre-initialize CLOB client so first trade doesn't need to wait
+        if self._trading_service:
+            asyncio.create_task(self._init_clob_client(user.id))
+
         return user, wallet
+
+    async def _init_clob_client(self, user_id: int) -> None:
+        """Pre-initialize CLOB client for faster first trade."""
+        try:
+            if self._trading_service:
+                await self._trading_service._get_clob_client(user_id)
+                logger.info(f"CLOB client pre-initialized for user {user_id}")
+        except Exception as e:
+            # Don't fail registration if CLOB init fails
+            logger.warning(f"Failed to pre-initialize CLOB client: {e}")
 
     async def _setup_wallet_approvals(
         self,

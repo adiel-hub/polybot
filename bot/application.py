@@ -118,6 +118,9 @@ async def create_application(db: Database) -> Application:
     market_service = MarketService()
     referral_service = ReferralService(db)
 
+    # Wire up trading service to user service for CLOB pre-initialization
+    user_service.set_trading_service(trading_service)
+
     # Initialize market categories
     await market_service.initialize_categories()
 
