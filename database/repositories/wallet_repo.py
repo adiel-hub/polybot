@@ -19,15 +19,17 @@ class WalletRepository:
         address: str,
         encrypted_private_key: bytes,
         encryption_salt: bytes,
+        eoa_address: Optional[str] = None,
+        wallet_type: str = "EOA",
     ) -> Wallet:
         """Create a new wallet."""
         conn = await self.db.get_connection()
         cursor = await conn.execute(
             """
-            INSERT INTO wallets (user_id, address, encrypted_private_key, encryption_salt)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO wallets (user_id, address, eoa_address, wallet_type, encrypted_private_key, encryption_salt)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (user_id, address, encrypted_private_key, encryption_salt),
+            (user_id, address, eoa_address, wallet_type, encrypted_private_key, encryption_salt),
         )
         await conn.commit()
 
@@ -151,3 +153,48 @@ class WalletRepository:
         cursor = await conn.execute("SELECT address FROM wallets")
         rows = await cursor.fetchall()
         return [row["address"] for row in rows]
+
+    async def mark_safe_deployed(self, wallet_id: int) -> None:
+        """Mark Safe wallet as deployed."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            "UPDATE wallets SET safe_deployed = 1 WHERE id = ?",
+            (wallet_id,),
+        )
+        await conn.commit()
+
+    async def reset_safe_deployed(self, wallet_id: int) -> None:
+        """Reset Safe deployed flag (e.g., if on-chain state doesn't match)."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            "UPDATE wallets SET safe_deployed = 0 WHERE id = ?",
+            (wallet_id,),
+        )
+        await conn.commit()
+
+    async def mark_usdc_approved(self, wallet_id: int) -> None:
+        """Mark wallet as having all required approvals set for Polymarket trading."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            "UPDATE wallets SET usdc_approved = 1 WHERE id = ?",
+            (wallet_id,),
+        )
+        await conn.commit()
+
+    async def reset_usdc_approved(self, wallet_id: int) -> None:
+        """Reset USDC approval flag (e.g., to force re-approval)."""
+        conn = await self.db.get_connection()
+        await conn.execute(
+            "UPDATE wallets SET usdc_approved = 0 WHERE id = ?",
+            (wallet_id,),
+        )
+        await conn.commit()
+
+    async def get_undeployed_safe_wallets(self) -> List[Wallet]:
+        """Get all Safe wallets that haven't been deployed yet."""
+        conn = await self.db.get_connection()
+        cursor = await conn.execute(
+            "SELECT * FROM wallets WHERE wallet_type = 'SAFE' AND safe_deployed = 0"
+        )
+        rows = await cursor.fetchall()
+        return [Wallet.from_row(row) for row in rows]

@@ -38,6 +38,7 @@ class PolymarketCLOB:
         self,
         private_key: str,
         funder_address: Optional[str] = None,
+        wallet_type: str = "EOA",
     ):
         """
         Initialize CLOB client.
@@ -45,9 +46,11 @@ class PolymarketCLOB:
         Args:
             private_key: Wallet private key for signing
             funder_address: Optional funder address (defaults to wallet address)
+            wallet_type: "EOA" or "SAFE" - determines signature type
         """
         self.private_key = private_key
         self.funder_address = funder_address
+        self.wallet_type = wallet_type
 
         # Configure builder attribution if credentials are provided
         builder_config = None
@@ -60,12 +63,17 @@ class PolymarketCLOB:
             )
             builder_config = BuilderConfig(local_builder_creds=builder_creds)
 
+        # Determine signature type based on wallet type
+        # 0 = EOA (standard wallet), 2 = Safe (smart contract wallet)
+        signature_type = 2 if wallet_type == "SAFE" else 0
+        logger.info(f"Initializing CLOB client with signature_type={signature_type} ({wallet_type})")
+
         # Initialize client
         self.client = ClobClient(
             host=settings.clob_host,
             key=private_key,
             chain_id=settings.chain_id,
-            signature_type=0,  # EOA signature
+            signature_type=signature_type,
             funder=funder_address,
             builder_config=builder_config,
         )
@@ -156,13 +164,19 @@ class PolymarketCLOB:
             logger.error(f"Market order failed: {e}")
 
             # Provide user-friendly error messages
-            error_str = str(e)
-            if "No orderbook exists" in error_str:
+            error_str = str(e).lower()
+            if "no orderbook exists" in error_str:
                 error_msg = "This market has no active orders. Try a different market or use a limit order."
-            elif "not enough balance" in error_str.lower() or "insufficient" in error_str.lower():
+            elif "allowance" in error_str:
+                # Check allowance BEFORE balance - "not enough balance / allowance" contains both
+                # We need to preserve "allowance" keyword for retry logic in trading_service
+                error_msg = "USDC allowance not set. Please try again."
+            elif "not enough balance" in error_str or "insufficient" in error_str:
                 error_msg = "Insufficient balance"
+            elif "no match" in error_str:
+                error_msg = "No matching orders available at this price. The market may have low liquidity - try a limit order instead or a smaller amount."
             else:
-                error_msg = error_str
+                error_msg = str(e)
 
             return OrderResult(success=False, error=error_msg)
 
@@ -224,11 +238,15 @@ class PolymarketCLOB:
             logger.error(f"Limit order failed: {e}")
 
             # Provide user-friendly error messages
-            error_str = str(e)
-            if "not enough balance" in error_str.lower() or "insufficient" in error_str.lower():
+            error_str = str(e).lower()
+            if "allowance" in error_str:
+                # Check allowance BEFORE balance - "not enough balance / allowance" contains both
+                # We need to preserve "allowance" keyword for retry logic in trading_service
+                error_msg = "USDC allowance not set. Please try again."
+            elif "not enough balance" in error_str or "insufficient" in error_str:
                 error_msg = "Insufficient balance"
             else:
-                error_msg = error_str
+                error_msg = str(e)
 
             return OrderResult(success=False, error=error_msg)
 
@@ -384,9 +402,13 @@ class PolymarketCLOB:
             Dict with allowance information
         """
         try:
+            # Use correct signature type based on wallet type
+            # 0 = EOA, 2 = Safe (POLY_GNOSIS_SAFE)
+            sig_type = 2 if self.wallet_type == "SAFE" else 0
+
             params = BalanceAllowanceParams(
                 asset_type=AssetType.COLLATERAL,
-                signature_type=0,
+                signature_type=sig_type,
             )
             result = self.client.get_balance_allowance(params)
             return result if result else {}
@@ -398,6 +420,9 @@ class PolymarketCLOB:
         """
         Set USDC allowance for the CLOB contract.
 
+        Note: This method is for EOA wallets only. Safe wallets should use
+        the relayer's setup_all_allowances() method instead.
+
         Args:
             amount: Amount to approve (None for unlimited)
 
@@ -405,10 +430,13 @@ class PolymarketCLOB:
             True if successful
         """
         try:
-            # Create allowance params for USDC
+            # Use correct signature type based on wallet type
+            # 0 = EOA, 2 = Safe (POLY_GNOSIS_SAFE)
+            sig_type = 2 if self.wallet_type == "SAFE" else 0
+
             params = BalanceAllowanceParams(
                 asset_type=AssetType.COLLATERAL,  # USDC is collateral
-                signature_type=0,  # EOA signature
+                signature_type=sig_type,
             )
 
             result = self.client.update_balance_allowance(params)
