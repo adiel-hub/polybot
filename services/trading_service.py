@@ -591,6 +591,63 @@ class TradingService:
         if size > position.size:
             return {"success": False, "error": "Insufficient shares"}
 
+        # Get wallet for Safe wallet checks
+        wallet = await self.wallet_repo.get_by_user_id(user_id)
+        if not wallet:
+            return {"success": False, "error": "Wallet not found"}
+
+        # Debug: Log wallet type
+        logger.info(
+            f"[SELL POSITION] User {user_id}: wallet_type={wallet.wallet_type}, "
+            f"is_safe_wallet={wallet.is_safe_wallet}, address={wallet.address[:10]}..."
+        )
+
+        # For Safe wallets, verify approvals before selling
+        private_key = None
+        if wallet.is_safe_wallet:
+            logger.info(
+                f"[SAFE SELL] Processing Safe wallet {wallet.address[:10]}... "
+                f"(deployed={wallet.safe_deployed}, approved={wallet.usdc_approved})"
+            )
+
+            private_key = self.encryption.decrypt(
+                wallet.encrypted_private_key,
+                wallet.encryption_salt,
+            )
+
+            # Verify Safe is deployed and approvals are set
+            relayer = PolymarketRelayer()
+            try:
+                is_actually_deployed = await relayer.verify_safe_deployed(wallet.address)
+            except Exception as e:
+                logger.error(f"[SAFE SELL] Failed to verify Safe deployment: {e}")
+                is_actually_deployed = wallet.safe_deployed
+
+            if not is_actually_deployed:
+                await relayer.close()
+                return {
+                    "success": False,
+                    "error": "Safe wallet not deployed. Please try again.",
+                }
+
+            # Verify approvals on-chain
+            logger.info(f"[SAFE SELL] Verifying approvals for Safe {wallet.address[:10]}...")
+            try:
+                all_approved = await relayer.verify_all_approvals_complete(wallet.address)
+            except Exception as e:
+                logger.error(f"[SAFE SELL] Failed to verify approvals: {e}")
+                all_approved = wallet.usdc_approved
+            await relayer.close()
+
+            if not all_approved:
+                logger.info(f"[SAFE SELL] Setting up missing approvals for {wallet.address[:10]}...")
+                approvals_ok = await self._setup_missing_approvals(wallet, private_key)
+                if not approvals_ok:
+                    return {
+                        "success": False,
+                        "error": "Failed to set up approvals. Please try again.",
+                    }
+
         # Create sell order record
         db_order = await self.order_repo.create(
             user_id=user_id,
