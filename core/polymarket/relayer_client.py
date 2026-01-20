@@ -18,6 +18,43 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+# Retry settings for RPC calls
+RPC_MAX_RETRIES = 3
+RPC_INITIAL_DELAY = 2.0  # seconds
+
+
+async def _rpc_call_with_retry(fn, description: str = "RPC call"):
+    """
+    Execute an RPC call with exponential backoff retry for rate limits.
+
+    Args:
+        fn: Async or sync function to call
+        description: Description for logging
+
+    Returns:
+        Result of the function call
+    """
+    import asyncio
+    delay = RPC_INITIAL_DELAY
+
+    for attempt in range(RPC_MAX_RETRIES):
+        try:
+            # Handle both sync and async functions
+            result = fn()
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+        except Exception as e:
+            error_str = str(e).lower()
+            if "rate limit" in error_str and attempt < RPC_MAX_RETRIES - 1:
+                logger.warning(
+                    f"{description} rate limited, retrying in {delay}s (attempt {attempt + 1}/{RPC_MAX_RETRIES})"
+                )
+                await asyncio.sleep(delay)
+                delay *= 2  # Exponential backoff
+            else:
+                raise
+
 # Polymarket contract addresses on Polygon
 USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"  # USDC.e on Polygon (collateral)
 USDC_NATIVE_ADDRESS = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"  # Native USDC
@@ -860,10 +897,14 @@ class PolymarketRelayer:
                 abi=allowance_abi,
             )
 
-            allowance = usdc_contract.functions.allowance(
-                Web3.to_checksum_address(owner_address),
-                Web3.to_checksum_address(spender_address),
-            ).call()
+            # Use retry wrapper for RPC calls
+            allowance = await _rpc_call_with_retry(
+                lambda: usdc_contract.functions.allowance(
+                    Web3.to_checksum_address(owner_address),
+                    Web3.to_checksum_address(spender_address),
+                ).call(),
+                f"Check USDC allowance for {spender_address[:10]}..."
+            )
 
             has_allowance = allowance > 0
             logger.debug(
@@ -990,10 +1031,14 @@ class PolymarketRelayer:
                 abi=is_approved_abi,
             )
 
-            is_approved = ctf_contract.functions.isApprovedForAll(
-                Web3.to_checksum_address(owner_address),
-                Web3.to_checksum_address(operator_address),
-            ).call()
+            # Use retry wrapper for RPC calls
+            is_approved = await _rpc_call_with_retry(
+                lambda: ctf_contract.functions.isApprovedForAll(
+                    Web3.to_checksum_address(owner_address),
+                    Web3.to_checksum_address(operator_address),
+                ).call(),
+                f"Check CTF operator approval for {operator_address[:10]}..."
+            )
 
             logger.debug(
                 f"CTF operator approval check: {owner_address[:10]}... -> {operator_address[:10]}... = {is_approved}"
@@ -1059,7 +1104,12 @@ class PolymarketRelayer:
             from config import settings
 
             w3 = Web3(Web3.HTTPProvider(settings.polygon_rpc_url))
-            code = w3.eth.get_code(Web3.to_checksum_address(safe_address))
+
+            # Use retry wrapper for RPC calls
+            code = await _rpc_call_with_retry(
+                lambda: w3.eth.get_code(Web3.to_checksum_address(safe_address)),
+                f"Check Safe deployment for {safe_address[:10]}..."
+            )
 
             is_deployed = len(code) > 0
             logger.debug(f"Safe {safe_address[:10]}... deployed: {is_deployed} (code length: {len(code)})")

@@ -298,7 +298,10 @@ class TradingService:
         # Decrypt private key for Safe wallet operations (deployment + allowance)
         private_key = None
         if wallet.is_safe_wallet:
-            logger.info(f"Processing Safe wallet {wallet.address[:10]}... (deployed={wallet.safe_deployed}, approved={wallet.usdc_approved})")
+            logger.info(
+                f"[SAFE ORDER] Processing Safe wallet {wallet.address[:10]}... "
+                f"(deployed={wallet.safe_deployed}, approved={wallet.usdc_approved})"
+            )
 
             private_key = self.encryption.decrypt(
                 wallet.encrypted_private_key,
@@ -307,8 +310,13 @@ class TradingService:
 
             # Verify Safe is actually deployed on-chain (not just in DB)
             relayer = PolymarketRelayer()
-            is_actually_deployed = await relayer.verify_safe_deployed(wallet.address)
-            logger.info(f"Safe deployment check: on-chain={is_actually_deployed}, db={wallet.safe_deployed}")
+            try:
+                is_actually_deployed = await relayer.verify_safe_deployed(wallet.address)
+            except Exception as e:
+                logger.error(f"[SAFE ORDER] Failed to verify Safe deployment on-chain: {e}")
+                # Assume deployed if DB says so and verification failed
+                is_actually_deployed = wallet.safe_deployed
+            logger.info(f"[SAFE ORDER] Deployment check: on-chain={is_actually_deployed}, db={wallet.safe_deployed}")
 
             if not is_actually_deployed:
                 # Reset DB flag if out of sync
@@ -329,26 +337,34 @@ class TradingService:
 
             # Verify ALL approvals on-chain (USDC + CTF operators)
             # Approvals should have been set during wallet creation
-            logger.info(f"Verifying all approvals for Safe {wallet.address[:10]}...")
-            all_approved_on_chain = await relayer.verify_all_approvals_complete(wallet.address)
+            logger.info(f"[SAFE ORDER] Verifying all approvals for Safe {wallet.address[:10]}...")
+            try:
+                all_approved_on_chain = await relayer.verify_all_approvals_complete(wallet.address)
+            except Exception as e:
+                logger.error(f"[SAFE ORDER] Failed to verify approvals on-chain: {e}")
+                # If verification fails due to RPC issues, check DB flag
+                # If DB says not approved, force setup
+                all_approved_on_chain = wallet.usdc_approved
             await relayer.close()
-            logger.info(f"Approval check: on-chain={all_approved_on_chain}, db={wallet.usdc_approved}")
+            logger.info(f"[SAFE ORDER] Approval check: on-chain={all_approved_on_chain}, db={wallet.usdc_approved}")
 
             if not all_approved_on_chain:
                 if wallet.usdc_approved:
                     logger.warning(
-                        f"Safe {wallet.address[:10]}... marked as approved in DB but missing on-chain. Resetting flag."
+                        f"[SAFE ORDER] Safe {wallet.address[:10]}... marked as approved in DB but missing on-chain. Resetting flag."
                     )
                     await self.wallet_repo.reset_usdc_approved(wallet.id)
 
                 # Set up missing approvals (fallback if pre-approval failed during registration)
-                logger.info(f"Setting up missing approvals for Safe {wallet.address[:10]}...")
+                logger.info(f"[SAFE ORDER] Setting up missing approvals for Safe {wallet.address[:10]}...")
                 approvals_ok = await self._setup_missing_approvals(wallet, private_key)
                 if not approvals_ok:
+                    logger.error(f"[SAFE ORDER] Failed to set up approvals for {wallet.address[:10]}...")
                     return {
                         "success": False,
                         "error": "Failed to set up approvals. Please try again.",
                     }
+                logger.info(f"[SAFE ORDER] Approvals set up successfully for {wallet.address[:10]}...")
                 # Refresh wallet object
                 wallet = await self.wallet_repo.get_by_user_id(wallet.user_id)
 
