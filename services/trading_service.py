@@ -9,15 +9,12 @@ from database.repositories import (
     PositionRepository,
     WalletRepository,
 )
-from database.models import Order, Position, Wallet
-from core.polymarket import PolymarketCLOB, PolymarketRelayer
+from database.models import Order, Position
+from core.polymarket import PolymarketCLOB
 from core.wallet import KeyEncryption
 from config.constants import MIN_ORDER_AMOUNT
 
 logger = logging.getLogger(__name__)
-
-# Note: Polymarket requires multiple contract approvals for Safe wallets.
-# See relayer_client.py USDC_SPENDERS and CTF_OPERATORS for the full list.
 
 
 class TradingService:
@@ -67,11 +64,10 @@ class TradingService:
             wallet.encryption_salt,
         )
 
-        # Create CLOB client (no API call yet)
+        # Create CLOB client - use funder_address (EOA) for trading
         client = PolymarketCLOB(
             private_key=private_key,
-            funder_address=wallet.funder_address,
-            wallet_type=wallet.wallet_type,
+            funder_address=wallet.funder_address or wallet.address,
         )
 
         # 2. Load API credentials from DB if available
@@ -126,121 +122,6 @@ class TradingService:
             del self._clob_clients[user_id]
             logger.info(f"CLOB client cache invalidated for user {user_id}")
 
-    async def _ensure_safe_deployed(
-        self,
-        wallet: Wallet,
-        private_key: str,
-    ) -> bool:
-        """
-        Ensure Safe wallet is deployed before trading.
-
-        Safe wallets must be deployed on-chain before the CLOB can access their funds.
-        This is done automatically on first trade via the relayer.
-
-        Args:
-            wallet: User's wallet object
-            private_key: Decrypted private key for signing
-
-        Returns:
-            True if Safe is deployed (or deployment succeeded), False otherwise
-        """
-        # Only applies to Safe wallets
-        if wallet.wallet_type != "SAFE":
-            return True
-
-        # Check if already deployed
-        if wallet.safe_deployed:
-            logger.debug(f"Safe {wallet.address[:10]}... already marked as deployed")
-            return True
-
-        logger.info(f"Safe {wallet.address[:10]}... not deployed, deploying now...")
-
-        try:
-            relayer = PolymarketRelayer()
-            if not relayer.is_configured():
-                logger.error("Relayer not configured - cannot deploy Safe")
-                return False
-
-            # Check on-chain status first (might be deployed but not marked in DB)
-            is_deployed = await relayer.check_safe_deployed(wallet.address)
-            if is_deployed:
-                logger.info(f"Safe {wallet.address[:10]}... already deployed on-chain, updating DB")
-                await self.wallet_repo.mark_safe_deployed(wallet.id)
-                await relayer.close()
-                return True
-
-            # Deploy the Safe via relayer
-            result = await relayer.deploy_safe(
-                private_key=private_key,
-                eoa_address=wallet.eoa_address,
-                safe_address=wallet.address,
-            )
-            await relayer.close()
-
-            if result.success:
-                logger.info(f"Safe {wallet.address[:10]}... deployed successfully: {result.tx_hash}")
-                # Mark as deployed in database
-                await self.wallet_repo.mark_safe_deployed(wallet.id)
-                return True
-            else:
-                # Check if it failed because already deployed
-                if result.data and result.data.get("already_deployed"):
-                    await self.wallet_repo.mark_safe_deployed(wallet.id)
-                    return True
-                logger.error(f"Safe deployment failed: {result.error}")
-                return False
-
-        except Exception as e:
-            logger.error(f"Safe deployment error: {e}")
-            return False
-
-    async def _setup_missing_approvals(
-        self,
-        wallet: Wallet,
-        private_key: str,
-    ) -> bool:
-        """
-        Set up missing approvals for a Safe wallet (fallback if pre-approval failed).
-
-        This is called when a wallet is missing approvals that should have been
-        set up during registration. It's a recovery path, not the normal flow.
-
-        Args:
-            wallet: User's wallet object
-            private_key: Decrypted private key for signing
-
-        Returns:
-            True if all approvals are now set, False otherwise
-        """
-        try:
-            relayer = PolymarketRelayer()
-            if not relayer.is_configured():
-                logger.error("Relayer not configured - cannot set approvals")
-                return False
-
-            logger.info(f"Setting up missing approvals for Safe {wallet.address[:10]}...")
-
-            # Skip on-chain verification to avoid RPC rate limits
-            # The relayer will submit all 6 approvals (idempotent operation)
-            result = await relayer.setup_all_allowances(
-                safe_address=wallet.address,
-                private_key=private_key,
-                skip_verification=True,
-            )
-            await relayer.close()
-
-            if result.success:
-                logger.info(f"Missing approvals set up for Safe {wallet.address[:10]}...")
-                await self.wallet_repo.mark_usdc_approved(wallet.id)
-                return True
-            else:
-                logger.error(f"Failed to set up approvals: {result.error}")
-                return False
-
-        except Exception as e:
-            logger.error(f"Approval setup failed: {e}")
-            return False
-
     async def place_order(
         self,
         user_id: int,
@@ -287,11 +168,7 @@ class TradingService:
         if not wallet:
             return {"success": False, "error": "Wallet not found"}
 
-        # Debug: Log wallet type
-        logger.info(
-            f"[PLACE ORDER] User {user_id}: wallet_type={wallet.wallet_type}, "
-            f"is_safe_wallet={wallet.is_safe_wallet}, address={wallet.address[:10]}..."
-        )
+        logger.info(f"[PLACE ORDER] User {user_id}: address={wallet.address[:10]}...")
 
         # Get real-time balance from blockchain
         from core.blockchain.balance import get_balance_service
@@ -303,44 +180,6 @@ class TradingService:
                 "success": False,
                 "error": f"Insufficient balance: ${current_balance:.2f} < ${amount:.2f}"
             }
-
-        # Decrypt private key for Safe wallet operations (deployment + allowance)
-        private_key = None
-        if wallet.is_safe_wallet:
-            logger.info(
-                f"[SAFE ORDER] Processing Safe wallet {wallet.address[:10]}... "
-                f"(deployed={wallet.safe_deployed}, approved={wallet.usdc_approved})"
-            )
-
-            private_key = self.encryption.decrypt(
-                wallet.encrypted_private_key,
-                wallet.encryption_salt,
-            )
-
-            # If Safe not deployed according to DB, deploy it
-            if not wallet.safe_deployed:
-                logger.info(f"[SAFE ORDER] Safe not deployed, deploying {wallet.address[:10]}...")
-                safe_deployed = await self._ensure_safe_deployed(wallet, private_key)
-                if not safe_deployed:
-                    return {
-                        "success": False,
-                        "error": "Failed to deploy Safe wallet. Please try again.",
-                    }
-
-            # If DB says not approved, skip expensive on-chain verification
-            # and go straight to setting up approvals (relayer checks internally)
-            if not wallet.usdc_approved:
-                logger.info(f"[SAFE ORDER] DB shows not approved, setting up approvals for {wallet.address[:10]}...")
-                approvals_ok = await self._setup_missing_approvals(wallet, private_key)
-                if not approvals_ok:
-                    logger.error(f"[SAFE ORDER] Failed to set up approvals for {wallet.address[:10]}...")
-                    return {
-                        "success": False,
-                        "error": "Failed to set up approvals. Please try again.",
-                    }
-                logger.info(f"[SAFE ORDER] Approvals set up successfully for {wallet.address[:10]}...")
-                # Refresh wallet object
-                wallet = await self.wallet_repo.get_by_user_id(wallet.user_id)
 
         # Create order record
         db_order = await self.order_repo.create(
@@ -388,32 +227,6 @@ class TradingService:
                     size=amount,
                     side="BUY",
                 )
-
-            # If allowance error, retry once after setting up approvals
-            if not result.success and result.error and "allowance" in result.error.lower():
-                if wallet.is_safe_wallet:
-                    logger.warning(
-                        f"Order failed with allowance error. Setting up approvals and retrying..."
-                    )
-                    await self.wallet_repo.reset_usdc_approved(wallet.id)
-
-                    approvals_ok = await self._setup_missing_approvals(wallet, private_key)
-                    if approvals_ok:
-                        # Retry the order
-                        logger.info("Retrying order after setting up approvals...")
-                        if order_type.upper() == "MARKET":
-                            result = await client.place_market_order(
-                                token_id=token_id,
-                                amount=amount,
-                                side="BUY",
-                            )
-                        else:
-                            result = await client.place_limit_order(
-                                token_id=token_id,
-                                price=price,
-                                size=amount,
-                                side="BUY",
-                            )
 
             if result.success:
                 # Update order with Polymarket ID
@@ -559,40 +372,18 @@ class TradingService:
         if size > position.size:
             return {"success": False, "error": "Insufficient shares"}
 
-        # Get wallet for Safe wallet checks
+        # Get wallet
         wallet = await self.wallet_repo.get_by_user_id(user_id)
         if not wallet:
             return {"success": False, "error": "Wallet not found"}
 
-        # Debug: Log wallet type
         logger.info(
-            f"[SELL POSITION] User {user_id}: wallet_type={wallet.wallet_type}, "
-            f"is_safe_wallet={wallet.is_safe_wallet}, address={wallet.address[:10]}..."
+            f"[SELL POSITION] User {user_id}: address={wallet.address[:10]}..."
         )
-
-        # For Safe wallets, verify approvals before selling
-        private_key = None
-        if wallet.is_safe_wallet:
-            logger.info(
-                f"[SAFE SELL] Processing Safe wallet {wallet.address[:10]}... "
-                f"(deployed={wallet.safe_deployed}, approved={wallet.usdc_approved})"
-            )
-
-            private_key = self.encryption.decrypt(
-                wallet.encrypted_private_key,
-                wallet.encryption_salt,
-            )
-
-            # If DB says not approved, skip expensive on-chain verification
-            # and go straight to setting up approvals (relayer checks internally)
-            if not wallet.usdc_approved:
-                logger.info(f"[SAFE SELL] DB shows not approved, setting up approvals for {wallet.address[:10]}...")
-                approvals_ok = await self._setup_missing_approvals(wallet, private_key)
-                if not approvals_ok:
-                    return {
-                        "success": False,
-                        "error": "Failed to set up approvals. Please try again.",
-                    }
+        logger.info(
+            f"[SELL POSITION] token_id={token_id[:20]}..., size={size}, "
+            f"position.size={position.size}, outcome={position.outcome}"
+        )
 
         # Create sell order record
         db_order = await self.order_repo.create(
@@ -617,7 +408,42 @@ class TradingService:
                 )
                 return {"success": False, "error": "Trading client error"}
 
+            # Check CTF balance/allowance before selling
+            logger.info(f"[SELL] Checking CTF balance/allowance for token {token_id[:20]}...")
+            ctf_info = await client.check_ctf_balance_allowance(token_id)
+            if ctf_info:
+                # Balance is in raw units (6 decimals for CTF tokens)
+                ctf_balance_raw = float(ctf_info.get("balance", 0))
+                ctf_balance_shares = ctf_balance_raw / 1_000_000  # Convert to shares
+                ctf_allowances = ctf_info.get("allowances", {})
+                logger.info(
+                    f"[SELL] CTF info: balance_raw={ctf_balance_raw}, balance_shares={ctf_balance_shares:.6f}, "
+                    f"allowances={len(ctf_allowances)}, trying to sell={size}"
+                )
+
+                # Validate we have enough shares
+                if ctf_balance_shares < size:
+                    logger.error(
+                        f"[SELL] Insufficient CTF balance! Have {ctf_balance_shares:.6f} shares, "
+                        f"trying to sell {size:.6f} shares. Updating position to match on-chain."
+                    )
+                    # Update position in DB to match actual on-chain balance
+                    if ctf_balance_shares > 0:
+                        await self.position_repo.update_size(position_id, ctf_balance_shares)
+                        logger.info(f"[SELL] Updated position {position_id} size to {ctf_balance_shares:.6f}")
+
+                    await self.order_repo.update_status(
+                        db_order.id,
+                        "FAILED",
+                        error_message=f"Insufficient shares: have {ctf_balance_shares:.4f}, need {size:.4f}",
+                    )
+                    return {
+                        "success": False,
+                        "error": f"Insufficient shares. You have {ctf_balance_shares:.4f} shares, but tried to sell {size:.4f}. Position has been updated.",
+                    }
+
             # Place sell market order
+            logger.info(f"[SELL] Placing market order: token={token_id[:20]}..., amount={size}, side=SELL")
             result = await client.place_market_order(
                 token_id=token_id,
                 amount=size,

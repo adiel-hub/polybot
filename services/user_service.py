@@ -8,12 +8,8 @@ from database.connection import Database
 from database.repositories import UserRepository, WalletRepository
 from database.models import User, Wallet
 from core.wallet import WalletGenerator, KeyEncryption
-from core.polymarket import PolymarketRelayer
 
 logger = logging.getLogger(__name__)
-
-# Polymarket CLOB exchange contract for USDC approval
-CLOB_EXCHANGE_ADDRESS = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
 
 
 class UserService:
@@ -49,10 +45,7 @@ class UserService:
         last_name: Optional[str] = None,
     ) -> tuple[User, Wallet]:
         """
-        Register a new user and generate Safe wallet.
-
-        New users get Safe wallets for full gasless experience.
-        Safe wallets don't require token approvals.
+        Register a new user and generate EOA wallet.
 
         Args:
             telegram_id: Telegram user ID
@@ -71,18 +64,18 @@ class UserService:
             last_name=last_name,
         )
 
-        # Generate Safe wallet (EOA + derived Safe address)
-        safe_address, eoa_address, private_key = WalletGenerator.create_safe_wallet()
+        # Generate EOA wallet (standard Ethereum wallet)
+        address, private_key = WalletGenerator.create_wallet()
 
-        # Encrypt private key (EOA signer key)
+        # Encrypt private key
         encrypted_key, salt = self.encryption.encrypt(private_key)
 
-        # Store wallet with Safe configuration
+        # Store wallet as EOA
         wallet = await self.wallet_repo.create(
             user_id=user.id,
-            address=safe_address,  # Safe address is the primary address
-            eoa_address=eoa_address,  # EOA is the signer
-            wallet_type="SAFE",
+            address=address,
+            eoa_address=address,  # EOA address is the same
+            wallet_type="EOA",
             encrypted_private_key=encrypted_key,
             encryption_salt=salt,
         )
@@ -90,25 +83,9 @@ class UserService:
         # Accept license
         await self.user_repo.accept_license(user.id)
 
-        logger.info(
-            f"Registered user {telegram_id} with Safe wallet {safe_address[:10]}... "
-            f"(signer: {eoa_address[:10]}...)"
-        )
+        logger.info(f"Registered user {telegram_id} with EOA wallet {address[:10]}...")
 
-        # Trigger background task to deploy Safe and set up all 6 approvals
-        # This ensures first trade is instant - no waiting for approvals
-        logger.info(
-            f"Starting background approval setup for Safe {safe_address[:10]}..."
-        )
-        asyncio.create_task(
-            self._setup_wallet_approvals(
-                safe_address=safe_address,
-                eoa_address=eoa_address,
-                private_key=private_key,
-            )
-        )
-
-        # Pre-initialize CLOB client so first trade doesn't need to wait
+        # Pre-initialize CLOB client so first trade is faster
         if self._trading_service:
             asyncio.create_task(self._init_clob_client(user.id))
 
@@ -123,95 +100,6 @@ class UserService:
         except Exception as e:
             # Don't fail registration if CLOB init fails
             logger.warning(f"Failed to pre-initialize CLOB client: {e}")
-
-    async def _setup_wallet_approvals(
-        self,
-        safe_address: str,
-        eoa_address: str,
-        private_key: str,
-    ) -> None:
-        """
-        Set up all 6 token approvals for a new Safe wallet via relayer (gasless).
-
-        Polymarket requires these approvals for trading:
-        1. USDC approval for CTF Exchange
-        2. USDC approval for Neg Risk CTF Exchange
-        3. USDC approval for Neg Risk Adapter
-        4. CTF operator approval for CTF Exchange
-        5. CTF operator approval for Neg Risk CTF Exchange
-        6. CTF operator approval for Neg Risk Adapter
-
-        This runs in the background after wallet creation so the first trade is instant.
-
-        Args:
-            safe_address: Safe wallet address
-            eoa_address: EOA signer address
-            private_key: Decrypted private key for signing
-        """
-        try:
-            relayer = PolymarketRelayer()
-            if not relayer.is_configured():
-                logger.info("Relayer not configured, skipping pre-approval")
-                return
-
-            logger.info(f"Setting up all 6 approvals for Safe wallet {safe_address[:10]}...")
-
-            # First check if Safe is deployed - if not, deploy it
-            is_deployed = await relayer.verify_safe_deployed(safe_address)
-            if not is_deployed:
-                logger.info(f"Safe {safe_address[:10]}... not deployed yet, deploying first...")
-                deploy_result = await relayer.deploy_safe(
-                    private_key=private_key,
-                    eoa_address=eoa_address,
-                    safe_address=safe_address,
-                )
-                if not deploy_result.success:
-                    logger.warning(
-                        f"Safe deployment failed for {safe_address[:10]}...: {deploy_result.error}"
-                    )
-                    await relayer.close()
-                    return
-
-                # Wait for deployment to confirm
-                if deploy_result.tx_hash:
-                    confirmed = await relayer.wait_for_transaction(deploy_result.tx_hash, timeout=60)
-                    if not confirmed:
-                        logger.warning(f"Safe deployment not confirmed for {safe_address[:10]}...")
-                        await relayer.close()
-                        return
-
-                logger.info(f"Safe {safe_address[:10]}... deployed successfully")
-
-                # Update database to mark Safe as deployed
-                wallet = await self.wallet_repo.get_by_address(safe_address)
-                if wallet:
-                    await self.wallet_repo.mark_safe_deployed(wallet.id)
-
-            # Now set up all allowances
-            result = await relayer.setup_all_allowances(
-                safe_address=safe_address,
-                private_key=private_key,
-            )
-            await relayer.close()
-
-            if result.success:
-                logger.info(
-                    f"All 6 approvals set for Safe {safe_address[:10]}... "
-                    f"({result.data.get('approvals_count', 6)} approvals)"
-                )
-                # Mark wallet as approved in database
-                wallet = await self.wallet_repo.get_by_address(safe_address)
-                if wallet:
-                    await self.wallet_repo.mark_usdc_approved(wallet.id)
-            else:
-                # Don't fail registration if approval fails - it can be done on first trade
-                logger.warning(
-                    f"Pre-approval setup incomplete for {safe_address[:10]}...: {result.error}"
-                )
-
-        except Exception as e:
-            # Don't fail registration if approval fails
-            logger.error(f"Pre-approval setup failed: {e}")
 
     async def generate_referral_code_for_user(self, user_id: int) -> str:
         """
@@ -289,7 +177,6 @@ class UserService:
 
         # Import here to avoid circular imports
         from database.repositories import OrderRepository, PositionRepository
-        from database.connection import Database
 
         # Get database from wallet repo
         db = self.wallet_repo.db

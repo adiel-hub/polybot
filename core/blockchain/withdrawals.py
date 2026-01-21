@@ -9,7 +9,6 @@ from eth_account import Account
 
 from config import settings
 from config.constants import USDC_E_ADDRESS, USDC_DECIMALS, MIN_WITHDRAWAL, MAX_WITHDRAWAL
-from core.polymarket.relayer_client import PolymarketRelayer
 
 logger = logging.getLogger(__name__)
 
@@ -624,10 +623,10 @@ class WithdrawalManager:
         amount: float,
     ) -> WithdrawalResult:
         """
-        Withdraw USDC using Polymarket relayer (completely gasless).
+        Withdraw USDC with gas sponsorship.
 
-        This is the preferred withdrawal method - no gas required from user
-        or gas sponsor. Falls back to sponsored withdrawal if relayer fails.
+        This method uses gas sponsorship to pay for the withdrawal transaction.
+        The user doesn't need POL for gas - the gas sponsor covers it.
 
         Args:
             user_address: User's wallet address
@@ -637,78 +636,9 @@ class WithdrawalManager:
         Returns:
             WithdrawalResult with tx hash or error
         """
-        try:
-            # Validate amount
-            if amount < MIN_WITHDRAWAL:
-                return WithdrawalResult(
-                    success=False,
-                    error=f"Minimum withdrawal is ${MIN_WITHDRAWAL}",
-                )
-
-            if amount > MAX_WITHDRAWAL:
-                return WithdrawalResult(
-                    success=False,
-                    error=f"Maximum withdrawal is ${MAX_WITHDRAWAL}",
-                )
-
-            # Validate destination address
-            if not Web3.is_address(to_address):
-                return WithdrawalResult(
-                    success=False,
-                    error="Invalid destination address",
-                )
-
-            # Check user USDC balance
-            balance = self.usdc_contract.functions.balanceOf(
-                Web3.to_checksum_address(user_address)
-            ).call()
-            balance_usdc = balance / (10 ** USDC_DECIMALS)
-
-            if balance_usdc < amount:
-                return WithdrawalResult(
-                    success=False,
-                    error=f"Insufficient balance: ${balance_usdc:.2f} < ${amount:.2f}",
-                )
-
-            # Try gasless withdrawal via Polymarket relayer
-            relayer = PolymarketRelayer()
-            if relayer.is_configured():
-                logger.info(f"Attempting gasless withdrawal via relayer: {amount} USDC")
-                result = await relayer.transfer_usdc(
-                    user_address=user_address,
-                    to_address=to_address,
-                    amount=amount,
-                )
-                await relayer.close()
-
-                if result.success:
-                    logger.info(
-                        f"Gasless withdrawal successful: {amount} USDC "
-                        f"from {user_address[:10]}... to {to_address[:10]}... "
-                        f"TX: {result.tx_hash}"
-                    )
-                    return WithdrawalResult(
-                        success=True,
-                        tx_hash=result.tx_hash,
-                    )
-                else:
-                    logger.warning(
-                        f"Gasless withdrawal failed: {result.error}, "
-                        "trying sponsored withdrawal..."
-                    )
-            else:
-                logger.info("Relayer not configured, using sponsored withdrawal")
-
-            # Fallback to sponsored withdrawal (requires gas sponsor)
-            return await self.withdraw_sponsored(
-                user_address=user_address,
-                to_address=to_address,
-                amount=amount,
-            )
-
-        except Exception as e:
-            logger.error(f"Gasless withdrawal failed: {e}")
-            return WithdrawalResult(
-                success=False,
-                error=str(e),
-            )
+        # Use sponsored withdrawal (gas sponsor pays)
+        return await self.withdraw_sponsored(
+            user_address=user_address,
+            to_address=to_address,
+            amount=amount,
+        )

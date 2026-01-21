@@ -38,19 +38,16 @@ class PolymarketCLOB:
         self,
         private_key: str,
         funder_address: Optional[str] = None,
-        wallet_type: str = "EOA",
     ):
         """
-        Initialize CLOB client.
+        Initialize CLOB client for EOA wallet.
 
         Args:
             private_key: Wallet private key for signing
             funder_address: Optional funder address (defaults to wallet address)
-            wallet_type: "EOA" or "SAFE" - determines signature type
         """
         self.private_key = private_key
         self.funder_address = funder_address
-        self.wallet_type = wallet_type
 
         # Configure builder attribution if credentials are provided
         builder_config = None
@@ -63,10 +60,9 @@ class PolymarketCLOB:
             )
             builder_config = BuilderConfig(local_builder_creds=builder_creds)
 
-        # Determine signature type based on wallet type
-        # 0 = EOA (standard wallet), 2 = Safe (smart contract wallet)
-        signature_type = 2 if wallet_type == "SAFE" else 0
-        logger.info(f"Initializing CLOB client with signature_type={signature_type} ({wallet_type})")
+        # Use EOA signature type (0) for standard wallets
+        signature_type = 0
+        logger.info(f"Initializing CLOB client with EOA signature_type={signature_type}")
 
         # Initialize client
         self.client = ClobClient(
@@ -168,9 +164,7 @@ class PolymarketCLOB:
             if "no orderbook exists" in error_str:
                 error_msg = "This market has no active orders. Try a different market or use a limit order."
             elif "allowance" in error_str:
-                # Check allowance BEFORE balance - "not enough balance / allowance" contains both
-                # We need to preserve "allowance" keyword for retry logic in trading_service
-                error_msg = "USDC allowance not set. Please try again."
+                error_msg = "USDC allowance not set. Please approve USDC for trading."
             elif "not enough balance" in error_str or "insufficient" in error_str:
                 error_msg = "Insufficient balance"
             elif "no match" in error_str:
@@ -240,9 +234,7 @@ class PolymarketCLOB:
             # Provide user-friendly error messages
             error_str = str(e).lower()
             if "allowance" in error_str:
-                # Check allowance BEFORE balance - "not enough balance / allowance" contains both
-                # We need to preserve "allowance" keyword for retry logic in trading_service
-                error_msg = "USDC allowance not set. Please try again."
+                error_msg = "USDC allowance not set. Please approve USDC for trading."
             elif "not enough balance" in error_str or "insufficient" in error_str:
                 error_msg = "Insufficient balance"
             else:
@@ -402,13 +394,10 @@ class PolymarketCLOB:
             Dict with allowance information
         """
         try:
-            # Use correct signature type based on wallet type
-            # 0 = EOA, 2 = Safe (POLY_GNOSIS_SAFE)
-            sig_type = 2 if self.wallet_type == "SAFE" else 0
-
+            # Use EOA signature type (0)
             params = BalanceAllowanceParams(
                 asset_type=AssetType.COLLATERAL,
-                signature_type=sig_type,
+                signature_type=0,
             )
             result = self.client.get_balance_allowance(params)
             return result if result else {}
@@ -416,12 +405,37 @@ class PolymarketCLOB:
             logger.error(f"Check allowance failed: {e}")
             return {}
 
+    async def check_ctf_balance_allowance(self, token_id: str) -> Dict[str, Any]:
+        """
+        Check CTF token (CONDITIONAL) balance and allowance for a specific token.
+
+        This is used to verify:
+        1. User has enough shares (balance) to sell
+        2. CTF allowance is set for the exchange
+
+        Args:
+            token_id: The CTF token ID to check
+
+        Returns:
+            Dict with balance and allowance information
+        """
+        try:
+            # Use EOA signature type (0)
+            params = BalanceAllowanceParams(
+                asset_type=AssetType.CONDITIONAL,
+                token_id=token_id,
+                signature_type=0,
+            )
+            result = self.client.get_balance_allowance(params)
+            logger.info(f"CTF balance/allowance for {token_id[:16]}...: {result}")
+            return result if result else {}
+        except Exception as e:
+            logger.error(f"Check CTF balance/allowance failed: {e}")
+            return {}
+
     async def set_allowance(self, amount: Optional[float] = None) -> bool:
         """
         Set USDC allowance for the CLOB contract.
-
-        Note: This method is for EOA wallets only. Safe wallets should use
-        the relayer's setup_all_allowances() method instead.
 
         Args:
             amount: Amount to approve (None for unlimited)
@@ -430,13 +444,10 @@ class PolymarketCLOB:
             True if successful
         """
         try:
-            # Use correct signature type based on wallet type
-            # 0 = EOA, 2 = Safe (POLY_GNOSIS_SAFE)
-            sig_type = 2 if self.wallet_type == "SAFE" else 0
-
+            # Use EOA signature type (0)
             params = BalanceAllowanceParams(
-                asset_type=AssetType.COLLATERAL,  # USDC is collateral
-                signature_type=sig_type,
+                asset_type=AssetType.COLLATERAL,
+                signature_type=0,
             )
 
             result = self.client.update_balance_allowance(params)

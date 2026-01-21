@@ -132,6 +132,40 @@ class PositionRepository:
             )
             await conn.commit()
 
+    async def update_size(
+        self,
+        position_id: int,
+        new_size: float,
+    ) -> None:
+        """
+        Update position size to match on-chain balance.
+
+        Used when DB position doesn't match actual CTF token balance.
+
+        Args:
+            position_id: Position ID
+            new_size: New size (shares) from on-chain
+        """
+        conn = await self.db.get_connection()
+
+        if new_size <= 0:
+            # Delete position if no shares
+            await conn.execute(
+                "DELETE FROM positions WHERE id = ?",
+                (position_id,),
+            )
+        else:
+            await conn.execute(
+                """
+                UPDATE positions
+                SET size = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (new_size, datetime.utcnow(), position_id),
+            )
+        await conn.commit()
+
     async def reduce_position(
         self,
         position_id: int,
