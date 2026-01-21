@@ -276,6 +276,11 @@ async def setup_websocket_service(application: Application) -> WebSocketService:
     # Store in bot_data for access in handlers
     application.bot_data["ws_service"] = ws_service
 
+    # Wire up to user_service for new wallet deposit monitoring
+    user_service = application.bot_data.get("user_service")
+    if user_service:
+        user_service.set_websocket_service(ws_service)
+
     logger.info("WebSocket service configured and started")
 
     return ws_service

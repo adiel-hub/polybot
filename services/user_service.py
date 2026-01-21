@@ -24,10 +24,15 @@ class UserService:
         self.wallet_repo = WalletRepository(db)
         self.encryption = encryption
         self._trading_service = None  # Set via set_trading_service() to avoid circular import
+        self._websocket_service = None  # Set via set_websocket_service() for deposit monitoring
 
     def set_trading_service(self, trading_service) -> None:
         """Set trading service reference for CLOB client pre-initialization."""
         self._trading_service = trading_service
+
+    def set_websocket_service(self, websocket_service) -> None:
+        """Set websocket service reference for deposit monitoring of new wallets."""
+        self._websocket_service = websocket_service
 
     async def get_user(self, telegram_id: int) -> Optional[User]:
         """Get user by Telegram ID."""
@@ -84,6 +89,10 @@ class UserService:
         await self.user_repo.accept_license(user.id)
 
         logger.info(f"Registered user {telegram_id} with EOA wallet {address[:10]}...")
+
+        # Add wallet to deposit monitoring
+        if self._websocket_service:
+            await self._websocket_service.add_wallet(address)
 
         # Pre-initialize CLOB client so first trade is faster
         if self._trading_service:
