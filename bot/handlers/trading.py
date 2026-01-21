@@ -378,12 +378,21 @@ async def _execute_order_internal(
             except Exception as e:
                 logger.error(f"Failed to get balance: {e}")
 
+            # Ensure message doesn't exceed Telegram's limit (4096 chars)
+            full_message = "\n".join(message_lines)
+            if len(full_message) > 4000:  # Leave some buffer
+                # Truncate message at a reasonable point
+                full_message = full_message[:4000] + "\n\n... (message truncated)"
+
             await message_handler(
-                "\n".join(message_lines),
+                full_message,
                 parse_mode="Markdown",
             )
         else:
             error_msg = result.get('error', 'Unknown error')
+            # Truncate error if too long
+            if len(error_msg) > 200:
+                error_msg = error_msg[:200] + "..."
             error_lines = []
 
             # Add mode message if provided
@@ -433,8 +442,13 @@ async def _execute_order_internal(
             [InlineKeyboardButton("🏠 Main Menu", callback_data="menu_main")],
         ]
 
+        # Truncate error message if too long (Telegram limit is 4096 characters)
+        error_str = str(e)
+        if len(error_str) > 200:
+            error_str = error_str[:200] + "..."
+
         await message_handler(
-            f"❌ Order failed: {str(e)}\n\n"
+            f"❌ Order failed: {error_str}\n\n"
             f"This may be a temporary network issue.",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
