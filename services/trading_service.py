@@ -239,11 +239,8 @@ class TradingService:
                     result.status or "OPEN",
                 )
 
-                # If market order filled, update position and balance
+                # If market order filled, update position
                 if order_type.upper() == "MARKET" and result.status == "FILLED":
-                    # Deduct from balance
-                    await self.wallet_repo.subtract_balance(wallet.id, amount)
-
                     # Create/update position
                     # Calculate shares bought (amount / price)
                     best_price = await client.get_best_price(token_id, "BUY")
@@ -486,14 +483,6 @@ class TradingService:
                                 trade_type="SELL",
                                 wallet=wallet,
                             )
-
-                            # Add NET proceeds to balance (after commission)
-                            if commission_calc:
-                                net_proceeds = commission_calc.net_trade_amount
-                            else:
-                                net_proceeds = proceeds
-
-                            await self.wallet_repo.add_balance(wallet.id, net_proceeds)
 
                 return {
                     "success": True,

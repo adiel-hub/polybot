@@ -263,8 +263,8 @@ class DepositSubscriber:
         """
         Process a detected deposit.
 
-        Simply updates the balance and notifies the user.
-        Approvals are handled lazily on first trade.
+        Notifies the user of the deposit. Balance is always fetched
+        in real-time from the blockchain, not stored in DB.
         """
         try:
             wallet_repo = WalletRepository(self.db)
@@ -281,17 +281,13 @@ class DepositSubscriber:
             if not user:
                 return
 
-            # Update wallet balance
-            await wallet_repo.add_balance(wallet.id, amount)
-
-            # Notify user
+            # Notify user (balance is fetched real-time, not stored in DB)
             if self.bot_send_message:
                 try:
                     message = (
                         f"💰 *Deposit Received!*\n\n"
                         f"💵 Amount: `${amount:.2f}` USDC\n"
                         f"🔗 TX: `{tx_hash[:16]}...`\n\n"
-                        f"✅ Your balance has been updated\\.\n"
                         f"📈 You're ready to trade!"
                     )
 
