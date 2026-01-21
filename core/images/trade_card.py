@@ -2,6 +2,7 @@
 
 import io
 import qrcode
+import httpx
 from PIL import Image, ImageDraw, ImageFont
 from dataclasses import dataclass
 from typing import Optional
@@ -172,8 +173,8 @@ class TradeCardGenerator:
             fill=roi_color
         )
 
-        # === RIGHT SIDE: Market image placeholder ===
-        self._draw_market_image_placeholder(draw, img, data)
+        # === RIGHT SIDE: Market image ===
+        self._draw_market_image(draw, img, data)
 
         # === BOTTOM: Footer with QR ===
         self._draw_footer(draw, img, data)
@@ -208,28 +209,61 @@ class TradeCardGenerator:
         ]
         draw.polygon(points, fill=self.TEXT_GRAY)
 
-    def _draw_market_image_placeholder(self, draw: ImageDraw, img: Image, data: TradeCardData):
+    def _draw_market_image(self, draw: ImageDraw, img: Image, data: TradeCardData):
         """Draw market image area on the right side."""
         # Position for market image (right side)
         img_size = 280
         img_x = self.CARD_WIDTH - img_size - 80
         img_y = 60
+        corner_radius = 20
 
-        # Draw rounded rectangle placeholder
-        rect = [img_x, img_y, img_x + img_size, img_y + img_size]
-        draw.rounded_rectangle(rect, radius=20, fill=(30, 60, 120))
+        # Try to load market image from URL
+        market_img = None
+        if data.market_image_url:
+            market_img = self._fetch_image(data.market_image_url)
 
-        # If market_image_url is provided, we'd load and paste it here
-        # For now, draw a placeholder icon
-        center_x = img_x + img_size // 2
-        center_y = img_y + img_size // 2
+        if market_img:
+            # Resize image to fit the square
+            market_img = market_img.convert('RGB')
+            market_img = market_img.resize((img_size, img_size), Image.Resampling.LANCZOS)
 
-        # Draw simple chart icon placeholder
-        icon_color = (60, 100, 180)
-        draw.rectangle(
-            [center_x - 40, center_y - 20, center_x + 40, center_y + 40],
-            fill=icon_color
-        )
+            # Create rounded corners mask
+            mask = Image.new('L', (img_size, img_size), 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.rounded_rectangle(
+                [0, 0, img_size, img_size],
+                radius=corner_radius,
+                fill=255
+            )
+
+            # Apply rounded corners to market image
+            rounded_img = Image.new('RGB', (img_size, img_size), self.BG_COLOR)
+            rounded_img.paste(market_img, (0, 0), mask)
+
+            # Paste onto main image
+            img.paste(rounded_img, (img_x, img_y))
+        else:
+            # Draw placeholder if no image available
+            rect = [img_x, img_y, img_x + img_size, img_y + img_size]
+            draw.rounded_rectangle(rect, radius=corner_radius, fill=(30, 60, 120))
+
+            # Draw simple placeholder icon
+            center_x = img_x + img_size // 2
+            center_y = img_y + img_size // 2
+            icon_color = (60, 100, 180)
+            draw.rectangle(
+                [center_x - 40, center_y - 20, center_x + 40, center_y + 40],
+                fill=icon_color
+            )
+
+    def _fetch_image(self, url: str) -> Optional[Image.Image]:
+        """Fetch an image from URL."""
+        try:
+            response = httpx.get(url, timeout=10.0, follow_redirects=True)
+            response.raise_for_status()
+            return Image.open(io.BytesIO(response.content))
+        except Exception:
+            return None
 
     def _draw_footer(self, draw: ImageDraw, img: Image, data: TradeCardData):
         """Draw the footer section with QR code."""
