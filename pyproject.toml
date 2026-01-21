@@ -10,7 +10,7 @@ dependencies = [
     "web3",
     "eth-account",
     "httpx",
-    "aiosqlite",
+    "asyncpg>=0.29.0",
     "cryptography",
     "python-dotenv",
     "pydantic",

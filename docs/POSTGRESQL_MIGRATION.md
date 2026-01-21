@@ -1,6 +1,8 @@
-# PostgreSQL Migration Guide
+# PostgreSQL Database Guide
 
-This document explains the migration from SQLite to PostgreSQL and how to deploy with the new database.
+> **Migration Status**: ✅ **COMPLETE** - PolyBot now uses PostgreSQL exclusively. SQLite support has been removed.
+
+This document explains PolyBot's PostgreSQL database architecture and deployment on Render.
 
 ## Overview
 
@@ -35,11 +37,11 @@ PolyBot has been migrated from SQLite (aiosqlite) to PostgreSQL (asyncpg) for im
 - Insert with ID: `cursor.lastrowid` → `RETURNING id`
 - Transactions: `conn.commit()` → auto-commit (asyncpg default)
 
-## Migration Steps
+## Setup Instructions
 
 ### 1. For Local Development
 
-If you're currently using SQLite and want to test PostgreSQL locally:
+Set up PostgreSQL locally:
 
 ```bash
 # Install PostgreSQL (macOS)
@@ -52,13 +54,7 @@ createdb polybot
 # Set environment variable
 export DATABASE_URL="postgresql://localhost:5432/polybot"
 
-# Migrate existing data
-python scripts/migrate_sqlite_to_postgresql.py
-
-# Verify migration
-python scripts/migrate_sqlite_to_postgresql.py verify
-
-# Run bot with PostgreSQL
+# Run bot (database tables will be created automatically)
 python run_all.py
 ```
 
@@ -92,29 +88,6 @@ Configure these in Render dashboard (Settings → Environment):
 - All other bot tokens and API keys from `.env.example`
 
 **Note**: `DATABASE_URL` is automatically set by Render when you add the PostgreSQL database.
-
-### 3. Migrating Existing Data to Render
-
-If you have existing SQLite data you want to move to Render PostgreSQL:
-
-**Option A**: Direct migration (requires network access to Render DB)
-```bash
-# Get DATABASE_URL from Render dashboard
-export DATABASE_URL="postgresql://user:pass@hostname.render.com/database"
-
-# Run migration
-python scripts/migrate_sqlite_to_postgresql.py
-```
-
-**Option B**: Export/Import approach
-```bash
-# 1. Export from SQLite to SQL dump
-sqlite3 ./data/polybot.db .dump > backup.sql
-
-# 2. Connect to Render PostgreSQL and import
-# (Use psql or Render's shell access)
-psql $DATABASE_URL < backup.sql
-```
 
 ## Database Schema
 
@@ -188,21 +161,6 @@ If you notice slow queries:
 
 The starter plan ($7/mo) is more than sufficient for most use cases.
 
-## Rollback to SQLite
-
-If you need to rollback to SQLite (not recommended for production):
-
-1. Change `requirements.txt`: `asyncpg` → `aiosqlite`
-2. Revert `config/settings.py`: `database_url` → `database_path`
-3. Revert `database/connection.py` to SQLite version
-4. Update all repositories to use SQLite syntax
-5. Revert `render.yaml` to remove PostgreSQL database
-
-Or simply checkout the commit before migration:
-```bash
-git checkout 71f682a  # Commit before PostgreSQL migration
-```
-
 ## Additional Resources
 
 - [asyncpg Documentation](https://magicstack.github.io/asyncpg/)
@@ -212,8 +170,8 @@ git checkout 71f682a  # Commit before PostgreSQL migration
 
 ## Support
 
-If you encounter issues during migration:
+If you encounter issues with PostgreSQL:
 1. Check Render deployment logs
 2. Verify all environment variables are set correctly
-3. Review the migration script output for errors
+3. Ensure DATABASE_URL is properly configured
 4. Open an issue on GitHub with error details

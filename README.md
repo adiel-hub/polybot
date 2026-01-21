@@ -61,7 +61,7 @@ PolyBot is a feature-rich Telegram bot that enables trading on [Polymarket](http
 | Trading API | [Polymarket CLOB](https://docs.polymarket.com/) |
 | Market Data | Polymarket Gamma API |
 | Blockchain | [Web3.py](https://web3py.readthedocs.io/) / Polygon |
-| Database | SQLite with [aiosqlite](https://aiosqlite.omnilib.dev/) |
+| Database | PostgreSQL with [asyncpg](https://magicstack.github.io/asyncpg/) |
 | Real-Time | WebSockets + [Alchemy](https://www.alchemy.com/) |
 | Encryption | [cryptography](https://cryptography.io/) (Fernet) |
 
@@ -112,7 +112,7 @@ Create a `.env` file with the following variables:
 | `ALCHEMY_WEBHOOK_SIGNING_KEY` | For webhook signature verification | No |
 | `ALCHEMY_WEBHOOK_ID` | Webhook ID for address management | No |
 | `ALCHEMY_AUTH_TOKEN` | Auth token for Alchemy API | No |
-| `DATABASE_PATH` | SQLite database location | No |
+| `DATABASE_URL` | PostgreSQL connection URL | Yes |
 | `GAS_SPONSOR_PRIVATE_KEY` | Wallet for sponsoring withdrawal gas | No |
 
 ### Generating the Encryption Key
@@ -143,7 +143,7 @@ polybot/
 │   ├── wallet/             # Wallet generation, encryption
 │   └── websocket/          # Real-time subscriptions
 │
-├── database/               # SQLite persistence
+├── database/               # PostgreSQL persistence
 │   ├── models/             # Data models (User, Wallet, Order, etc.)
 │   ├── repositories/       # CRUD operations
 │   └── connection.py       # Database initialization

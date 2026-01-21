@@ -63,10 +63,10 @@ core/                   → External integrations
     alchemy_webhook.py  → Webhook handler for deposit notifications
     alchemy_manager.py  → API client for managing webhook addresses
 
-database/               → SQLite persistence
+database/               → PostgreSQL persistence
   models/               → Dataclasses (User, Wallet, Order, Position, etc.)
   repositories/         → CRUD operations per model
-  connection.py         → aiosqlite connection + table initialization
+  connection.py         → asyncpg connection pool + table initialization
 ```
 
 ### Key Patterns

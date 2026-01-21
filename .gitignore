@@ -13,14 +13,7 @@ env/
 .venv/
 
 # Database
-*.db
-*.db-shm
-*.db-wal
-*.sqlite
-*.sqlite-shm
-*.sqlite-wal
 data/
-test_*.db
 
 # IDE
 .vscode/
