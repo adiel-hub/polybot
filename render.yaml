@@ -1,34 +1,69 @@
 # Render Blueprint for PolyBot
-# Deploy both the Telegram bot and webhook server
+# Runs all bots (PolyBot, News Bot, Whale Bot) + Webhook server
 
 services:
-  # Main Telegram Bot
+  # All Bots (PolyBot + News + Whale)
   - type: worker
-    name: polybot
+    name: polybot-all
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python run.py
+    startCommand: python run_all.py
     envVars:
+      # Telegram
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: NEWS_BOT_TOKEN
+        sync: false
+      - key: WHALE_BOT_TOKEN
+        sync: false
+
+      # Security
       - key: MASTER_ENCRYPTION_KEY
         sync: false
+
+      # Blockchain
       - key: POLYGON_RPC_URL
         value: https://polygon-rpc.com
-      - key: DATABASE_PATH
-        value: /data/polybot.db
       - key: GAS_SPONSOR_PRIVATE_KEY
         sync: false
+
+      # Database
+      - key: DATABASE_PATH
+        value: /data/polybot.db
+
+      # Admin
       - key: ADMIN_TELEGRAM_IDS
         sync: false
+
+      # Polymarket Builder
       - key: POLY_BUILDER_API_KEY
         sync: false
       - key: POLY_BUILDER_SECRET
         sync: false
       - key: POLY_BUILDER_PASSPHRASE
         sync: false
+
+      # Alchemy (leave empty to disable expensive WebSocket)
       - key: ALCHEMY_API_KEY
         value: ""
+
+      # News Bot
+      - key: NEWS_CHANNEL_IDS
+        sync: false
+      - key: TRADING_BOT_USERNAME
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+
+      # Whale Bot
+      - key: WHALE_CHANNEL_ID
+        sync: false
+      - key: POLYBOT_USERNAME
+        sync: false
+      - key: WHALE_THRESHOLD
+        value: "10000"
     disk:
       name: polybot-data
       mountPath: /data
@@ -51,8 +86,6 @@ services:
         sync: false
       - key: ALCHEMY_AUTH_TOKEN
         sync: false
-      - key: WEBHOOK_PORT
-        value: "10000"
     disk:
       name: polybot-data
       mountPath: /data
