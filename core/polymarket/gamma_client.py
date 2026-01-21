@@ -272,6 +272,9 @@ class GammaMarketClient:
         """
         Get market by condition ID.
 
+        Tries /markets API first, then falls back to searching /events
+        for multi-outcome markets that may not be indexed in /markets.
+
         Args:
             condition_id: Market condition ID
 
@@ -281,6 +284,7 @@ class GammaMarketClient:
         try:
             client = await self._get_client()
 
+            # Try /markets endpoint first (works for most markets)
             response = await client.get(
                 f"{self.host}/markets",
                 params={"condition_ids": condition_id},
@@ -290,10 +294,43 @@ class GammaMarketClient:
             data = response.json()
             if data:
                 return Market.from_api(data[0])
-            return None
+
+            # Fallback: Search events for multi-outcome markets
+            # Some markets only appear in /events but not /markets
+            logger.info(f"Market not found in /markets, searching /events for {condition_id[:16]}...")
+            return await self._search_events_for_condition_id(condition_id)
 
         except Exception as e:
             logger.error(f"Failed to fetch market {condition_id}: {e}")
+            return None
+
+    async def _search_events_for_condition_id(self, condition_id: str) -> Optional[Market]:
+        """
+        Search through events to find a market by condition ID.
+
+        This is a fallback for multi-outcome markets that exist in /events
+        but are not indexed in the /markets endpoint.
+
+        Args:
+            condition_id: Market condition ID to find
+
+        Returns:
+            Market or None if not found
+        """
+        try:
+            # Fetch recent events (sorted by volume for relevance)
+            events = await self.get_events(limit=200)
+
+            for market in events:
+                if market.condition_id == condition_id:
+                    logger.info(f"Found market in events: {market.question[:50]}...")
+                    return market
+
+            logger.warning(f"Market {condition_id[:16]}... not found in events search")
+            return None
+
+        except Exception as e:
+            logger.error(f"Events search failed for {condition_id}: {e}")
             return None
 
     async def get_market_by_slug(self, slug: str) -> Optional[Market]:

@@ -137,14 +137,22 @@ async def show_main_menu(
 
         # Load market and show trade page
         market_service = context.bot_data["market_service"]
-        logger.info(f"Calling market_service.get_market_detail({actual_condition_id[:20] if len(actual_condition_id) > 20 else actual_condition_id}...)")
+        logger.info(f"Looking up market: {actual_condition_id[:20] if len(actual_condition_id) > 20 else actual_condition_id}...")
 
-        try:
-            market = await market_service.get_market_detail(actual_condition_id)
-            logger.info(f"API call completed. Market result: {market is not None}")
-        except Exception as e:
-            logger.error(f"❌ Error fetching market: {e}", exc_info=True)
-            market = None
+        # First check if market is in the user's browse cache (from recent browse)
+        browse_markets = context.user_data.get("browse_markets", {})
+        market = browse_markets.get(actual_condition_id)
+
+        if market:
+            logger.info(f"✅ Found market in browse cache: {market.question[:30]}...")
+        else:
+            # Try API lookup (with fallback to events search)
+            try:
+                market = await market_service.get_market_detail(actual_condition_id)
+                logger.info(f"API call completed. Market result: {market is not None}")
+            except Exception as e:
+                logger.error(f"❌ Error fetching market: {e}", exc_info=True)
+                market = None
 
         if market:
             logger.info(f"✅ Market FOUND! Question: {market.question}")
