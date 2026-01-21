@@ -12,58 +12,80 @@ class TradeCardData:
     """Data for generating a trade card image."""
 
     market_question: str
-    outcome: str  # YES or NO
+    outcome: str  # YES or NO or custom outcome name
     entry_price: float
     exit_price: float
     size: float
     pnl: float
     pnl_percentage: float
-    referral_code: str
     referral_link: str
+    market_image_url: Optional[str] = None  # URL to market image
 
 
 class TradeCardGenerator:
-    """Generate shareable trade card images like Bybit PnL cards."""
+    """Generate shareable trade card images matching the PolyBot design."""
 
     # Card dimensions (16:9 aspect ratio)
     CARD_WIDTH = 1280
     CARD_HEIGHT = 720
 
-    # Colors (Polymarket purple theme)
-    BG_COLOR = (18, 18, 28)  # Dark background
-    ACCENT_COLOR = (138, 43, 226)  # Purple accent
+    # Colors
+    BG_COLOR = (20, 20, 28)  # Dark background
     PROFIT_COLOR = (0, 255, 136)  # Green for profit
     LOSS_COLOR = (255, 68, 68)  # Red for loss
     TEXT_WHITE = (255, 255, 255)
-    TEXT_GRAY = (156, 163, 175)
-    CARD_BG = (28, 28, 38)  # Slightly lighter card bg
+    TEXT_GRAY = (140, 140, 150)
+    DIVIDER_COLOR = (60, 60, 70)
 
     def __init__(self):
-        # Use default fonts (Pillow will use built-in)
-        self.title_font = None
-        self.large_font = None
-        self.medium_font = None
-        self.small_font = None
+        self.brand_font = None
+        self.tagline_font = None
+        self.label_font = None
+        self.position_font = None
+        self.market_font = None
+        self.percentage_font = None
+        self.footer_font = None
         self._load_fonts()
 
     def _load_fonts(self):
         """Load fonts for text rendering."""
-        try:
-            # Try to load system fonts
-            self.title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
-            self.large_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 64)
-            self.medium_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28)
-            self.small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22)
-        except (OSError, IOError):
-            # Fallback to default font
-            self.title_font = ImageFont.load_default()
-            self.large_font = ImageFont.load_default()
-            self.medium_font = ImageFont.load_default()
-            self.small_font = ImageFont.load_default()
+        # Try multiple font paths for cross-platform compatibility
+        font_paths = [
+            # macOS
+            "/System/Library/Fonts/Helvetica.ttc",
+            "/System/Library/Fonts/SFNSDisplay.ttf",
+            "/Library/Fonts/Arial.ttf",
+            # Linux
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+
+        bold_font_paths = [
+            "/System/Library/Fonts/Helvetica.ttc",
+            "/Library/Fonts/Arial Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ]
+
+        def load_font(paths, size):
+            for path in paths:
+                try:
+                    return ImageFont.truetype(path, size)
+                except (OSError, IOError):
+                    continue
+            return ImageFont.load_default()
+
+        self.brand_font = load_font(bold_font_paths, 42)
+        self.tagline_font = load_font(font_paths, 24)
+        self.label_font = load_font(font_paths, 28)
+        self.position_font = load_font(bold_font_paths, 36)
+        self.market_font = load_font(font_paths, 32)
+        self.percentage_font = load_font(bold_font_paths, 120)
+        self.footer_font = load_font(font_paths, 26)
+        self.footer_small_font = load_font(font_paths, 20)
 
     def generate(self, data: TradeCardData) -> io.BytesIO:
         """
-        Generate a trade card image in 16:9 landscape format.
+        Generate a trade card image matching the PolyBot design.
 
         Args:
             data: Trade card data
@@ -71,111 +93,90 @@ class TradeCardGenerator:
         Returns:
             BytesIO buffer containing PNG image
         """
-        # Create image
         img = Image.new('RGB', (self.CARD_WIDTH, self.CARD_HEIGHT), self.BG_COLOR)
         draw = ImageDraw.Draw(img)
 
-        # Draw main card background
-        card_margin = 24
-        card_rect = [
-            card_margin,
-            card_margin,
-            self.CARD_WIDTH - card_margin,
-            self.CARD_HEIGHT - card_margin
-        ]
-        self._draw_rounded_rect(draw, card_rect, 20, self.CARD_BG)
+        # === TOP LEFT: PolyBot branding ===
+        y_pos = 50
 
-        # Layout: Left section (60%) for main info, Right section (40%) for stats
-        left_section_width = int(self.CARD_WIDTH * 0.58)
-        right_section_x = left_section_width + 40
+        # Draw PolyBot logo placeholder (simple geometric shape)
+        logo_size = 55
+        logo_x = 60
+        self._draw_polybot_logo(draw, logo_x, y_pos, logo_size)
 
-        # === LEFT SECTION ===
-
-        # Polymarket logo/text
-        y_pos = 55
+        # Brand name
         draw.text(
-            (50, y_pos),
-            "POLYMARKET",
-            font=self.title_font,
-            fill=self.ACCENT_COLOR
+            (logo_x + logo_size + 20, y_pos),
+            "PolyBot",
+            font=self.brand_font,
+            fill=self.TEXT_WHITE
         )
 
-        # Outcome badge (YES/NO) next to logo
-        badge_text = f"{data.outcome}"
-        badge_color = self.PROFIT_COLOR if data.outcome == "YES" else self.LOSS_COLOR
-        self._draw_badge(draw, (250, y_pos - 5), badge_text, badge_color)
+        # Tagline
+        draw.text(
+            (logo_x + logo_size + 20, y_pos + 45),
+            "The fastest way to trade on Polymarket",
+            font=self.tagline_font,
+            fill=self.TEXT_GRAY
+        )
+
+        # === POSITION INFO ===
+        y_pos = 170
+
+        # "POSITION:" label
+        draw.text(
+            (60, y_pos),
+            "POSITION:",
+            font=self.label_font,
+            fill=self.TEXT_GRAY
+        )
+
+        # Position/outcome name (bold, white)
+        label_bbox = draw.textbbox((0, 0), "POSITION:", font=self.label_font)
+        label_width = label_bbox[2] - label_bbox[0]
+        draw.text(
+            (60 + label_width + 15, y_pos),
+            data.outcome.upper(),
+            font=self.position_font,
+            fill=self.TEXT_WHITE
+        )
 
         # Market question
-        y_pos = 115
-        question = self._truncate_text(data.market_question, 60)
-        for line in self._wrap_text(question, 40):
-            draw.text((50, y_pos), line, font=self.medium_font, fill=self.TEXT_WHITE)
-            y_pos += 38
-
-        # ROI (large, prominent)
         y_pos = 220
-        draw.text((50, y_pos), "ROI", font=self.small_font, fill=self.TEXT_GRAY)
+        draw.text(
+            (60, y_pos),
+            data.market_question,
+            font=self.market_font,
+            fill=self.TEXT_GRAY
+        )
 
-        y_pos = 250
+        # === TOTAL RETURN (Hero element) ===
+        y_pos = 320
+
+        # "TOTAL RETURN" label
+        draw.text(
+            (60, y_pos),
+            "TOTAL RETURN",
+            font=self.label_font,
+            fill=self.TEXT_GRAY
+        )
+
+        # Large percentage
+        y_pos = 360
         roi_color = self.PROFIT_COLOR if data.pnl_percentage >= 0 else self.LOSS_COLOR
         roi_sign = "+" if data.pnl_percentage >= 0 else ""
         draw.text(
-            (50, y_pos),
+            (60, y_pos),
             f"{roi_sign}{data.pnl_percentage:.2f}%",
-            font=self.large_font,
+            font=self.percentage_font,
             fill=roi_color
         )
 
-        # Profit/Loss amount
-        y_pos = 340
-        draw.text((50, y_pos), "Profit/Loss", font=self.small_font, fill=self.TEXT_GRAY)
+        # === RIGHT SIDE: Market image placeholder ===
+        self._draw_market_image_placeholder(draw, img, data)
 
-        y_pos = 370
-        pnl_sign = "+" if data.pnl >= 0 else ""
-        draw.text(
-            (50, y_pos),
-            f"{pnl_sign}${data.pnl:.2f}",
-            font=self.large_font,
-            fill=roi_color
-        )
-
-        # === RIGHT SECTION (Stats in a column) ===
-
-        # Draw vertical divider
-        divider_x = left_section_width
-        draw.line(
-            [(divider_x, 50), (divider_x, self.CARD_HEIGHT - 130)],
-            fill=(60, 60, 80),
-            width=2
-        )
-
-        # Stats section
-        stats_x = right_section_x
-        stats_y = 70
-
-        # Entry Price
-        draw.text((stats_x, stats_y), "Entry Price", font=self.small_font, fill=self.TEXT_GRAY)
-        stats_y += 30
-        draw.text((stats_x, stats_y), f"{data.entry_price:.4f}", font=self.medium_font, fill=self.TEXT_WHITE)
-
-        # Exit Price
-        stats_y += 70
-        draw.text((stats_x, stats_y), "Exit Price", font=self.small_font, fill=self.TEXT_GRAY)
-        stats_y += 30
-        draw.text((stats_x, stats_y), f"{data.exit_price:.4f}", font=self.medium_font, fill=self.TEXT_WHITE)
-
-        # Position Size
-        stats_y += 70
-        draw.text((stats_x, stats_y), "Position Size", font=self.small_font, fill=self.TEXT_GRAY)
-        stats_y += 30
-        draw.text((stats_x, stats_y), f"${data.size:.2f}", font=self.medium_font, fill=self.TEXT_WHITE)
-
-        # Draw profit indicator arrows on the right side
-        indicator_x = self.CARD_WIDTH - 150
-        self._draw_profit_indicator(draw, (indicator_x, 150), data.pnl_percentage >= 0)
-
-        # === BOTTOM REFERRAL SECTION ===
-        self._draw_referral_section(draw, img, data)
+        # === BOTTOM: Footer with QR ===
+        self._draw_footer(draw, img, data)
 
         # Save to buffer
         buffer = io.BytesIO()
@@ -185,138 +186,106 @@ class TradeCardGenerator:
 
         return buffer
 
-    def _draw_rounded_rect(self, draw: ImageDraw, rect: list, radius: int, color: tuple):
-        """Draw a rounded rectangle."""
-        x1, y1, x2, y2 = rect
-        draw.rounded_rectangle(rect, radius=radius, fill=color)
+    def _draw_polybot_logo(self, draw: ImageDraw, x: int, y: int, size: int):
+        """Draw a simple PolyBot logo (geometric placeholder)."""
+        # Draw a simple rounded square with an abstract shape
+        rect = [x, y, x + size, y + size]
+        draw.rounded_rectangle(rect, radius=12, fill=(40, 40, 50))
 
-    def _draw_badge(self, draw: ImageDraw, pos: tuple, text: str, color: tuple):
-        """Draw a badge with text."""
-        x, y = pos
-        padding = 15
+        # Draw abstract "send" arrow shape inside
+        padding = 12
+        center_x = x + size // 2
+        center_y = y + size // 2
 
-        # Get text size
-        bbox = draw.textbbox((0, 0), text, font=self.medium_font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-
-        # Draw badge background
-        badge_rect = [
-            x - padding,
-            y,
-            x + text_width + padding,
-            y + text_height + padding * 2
+        # Simple arrow/send icon
+        points = [
+            (x + padding, y + size - padding),
+            (x + padding, y + padding + 8),
+            (x + size // 2, y + padding),
+            (x + size - padding, y + padding + 8),
+            (x + size - padding, y + size - padding),
+            (x + size // 2, y + size - padding - 8),
         ]
-        draw.rounded_rectangle(badge_rect, radius=8, fill=color)
+        draw.polygon(points, fill=self.TEXT_GRAY)
 
-        # Draw text
-        draw.text((x, y + padding // 2), text, font=self.medium_font, fill=self.BG_COLOR)
+    def _draw_market_image_placeholder(self, draw: ImageDraw, img: Image, data: TradeCardData):
+        """Draw market image area on the right side."""
+        # Position for market image (right side)
+        img_size = 280
+        img_x = self.CARD_WIDTH - img_size - 80
+        img_y = 60
 
-    def _draw_profit_indicator(self, draw: ImageDraw, pos: tuple, is_profit: bool):
-        """Draw a profit/loss indicator (arrows)."""
-        x, y = pos
-        color = self.PROFIT_COLOR if is_profit else self.LOSS_COLOR
+        # Draw rounded rectangle placeholder
+        rect = [img_x, img_y, img_x + img_size, img_y + img_size]
+        draw.rounded_rectangle(rect, radius=20, fill=(30, 60, 120))
 
-        # Draw multiple arrows with fade effect
-        arrow_spacing = 50
-        arrow_width = 40
-        arrow_height = 25
+        # If market_image_url is provided, we'd load and paste it here
+        # For now, draw a placeholder icon
+        center_x = img_x + img_size // 2
+        center_y = img_y + img_size // 2
 
-        for i in range(3):
-            # Calculate opacity by adjusting color intensity
-            fade = 1.0 - (i * 0.25)
-            faded_color = tuple(int(c * fade) for c in color)
+        # Draw simple chart icon placeholder
+        icon_color = (60, 100, 180)
+        draw.rectangle(
+            [center_x - 40, center_y - 20, center_x + 40, center_y + 40],
+            fill=icon_color
+        )
 
-            if is_profit:
-                arrow_y = y + (2 - i) * arrow_spacing
-                # Upward arrow
-                points = [
-                    (x, arrow_y + arrow_height),
-                    (x + arrow_width // 2, arrow_y),
-                    (x + arrow_width, arrow_y + arrow_height)
-                ]
-            else:
-                arrow_y = y + i * arrow_spacing
-                # Downward arrow
-                points = [
-                    (x, arrow_y),
-                    (x + arrow_width // 2, arrow_y + arrow_height),
-                    (x + arrow_width, arrow_y)
-                ]
-
-            draw.polygon(points, fill=faded_color)
-
-    def _draw_referral_section(self, draw: ImageDraw, img: Image, data: TradeCardData):
-        """Draw the referral section at the bottom."""
-        y_start = self.CARD_HEIGHT - 100
+    def _draw_footer(self, draw: ImageDraw, img: Image, data: TradeCardData):
+        """Draw the footer section with QR code."""
+        y_start = self.CARD_HEIGHT - 130
 
         # Draw separator line
         draw.line(
             [(40, y_start), (self.CARD_WIDTH - 40, y_start)],
-            fill=(60, 60, 80),
+            fill=self.DIVIDER_COLOR,
             width=1
         )
 
-        # Draw referral text
-        y_pos = y_start + 18
-        draw.text(
-            (50, y_pos),
-            "Trade on Polymarket with PolyBot!",
-            font=self.small_font,
-            fill=self.TEXT_WHITE
-        )
-
-        draw.text(
-            (400, y_pos),
-            f"Referral Code: {data.referral_code}",
-            font=self.small_font,
-            fill=self.ACCENT_COLOR
-        )
-
-        # Generate and paste QR code
+        # Generate QR code
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=3,
+            box_size=4,
             border=1,
         )
         qr.add_data(data.referral_link)
         qr.make(fit=True)
-        qr_img = qr.make_image(fill_color="white", back_color=self.CARD_BG)
+        qr_img = qr.make_image(fill_color="white", back_color=self.BG_COLOR)
         qr_img = qr_img.convert('RGB')
 
-        # Resize QR code (smaller for 16:9 layout)
-        qr_size = 70
+        # Resize QR code
+        qr_size = 90
         qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.LANCZOS)
 
-        # Paste QR code
-        qr_pos = (self.CARD_WIDTH - qr_size - 50, y_start + 10)
-        img.paste(qr_img, qr_pos)
+        # Paste QR code on left side
+        qr_x = 60
+        qr_y = y_start + 20
+        img.paste(qr_img, (qr_x, qr_y))
+
+        # Text next to QR
+        text_x = qr_x + qr_size + 25
+        text_y = y_start + 35
+
+        draw.text(
+            (text_x, text_y),
+            "Scan to trade with PolyBot",
+            font=self.footer_font,
+            fill=self.TEXT_WHITE
+        )
+
+        draw.text(
+            (text_x, text_y + 35),
+            "Telegram native",
+            font=self.footer_small_font,
+            fill=self.TEXT_GRAY
+        )
 
     def _truncate_text(self, text: str, max_chars: int) -> str:
         """Truncate text with ellipsis if too long."""
         if len(text) <= max_chars:
             return text
         return text[:max_chars - 3] + "..."
-
-    def _wrap_text(self, text: str, max_chars: int) -> list:
-        """Wrap text into multiple lines."""
-        words = text.split()
-        lines = []
-        current_line = ""
-
-        for word in words:
-            if len(current_line) + len(word) + 1 <= max_chars:
-                current_line += (" " if current_line else "") + word
-            else:
-                if current_line:
-                    lines.append(current_line)
-                current_line = word
-
-        if current_line:
-            lines.append(current_line)
-
-        return lines[:3]  # Max 3 lines
 
 
 # Convenience function
@@ -330,6 +299,7 @@ def generate_trade_card(
     pnl_percentage: float,
     referral_code: str,
     referral_link: str,
+    market_image_url: Optional[str] = None,
 ) -> io.BytesIO:
     """Generate a trade card image."""
     generator = TradeCardGenerator()
@@ -341,7 +311,7 @@ def generate_trade_card(
         size=size,
         pnl=pnl,
         pnl_percentage=pnl_percentage,
-        referral_code=referral_code,
         referral_link=referral_link,
+        market_image_url=market_image_url,
     )
     return generator.generate(data)
