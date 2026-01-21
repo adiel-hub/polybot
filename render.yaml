@@ -1,10 +1,9 @@
 # Render Blueprint for PolyBot
-# Runs all bots (PolyBot, News Bot, Whale Bot) + Webhook server
+# Runs all bots + webhook server in a single service
 
 services:
-  # All Bots (PolyBot + News + Whale)
-  - type: worker
-    name: polybot-all
+  - type: web
+    name: polybot
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: python run_all.py
@@ -43,7 +42,15 @@ services:
       - key: POLY_BUILDER_PASSPHRASE
         sync: false
 
-      # Alchemy (leave empty to disable expensive WebSocket)
+      # Alchemy Webhook (replaces expensive WebSocket)
+      - key: ALCHEMY_WEBHOOK_SIGNING_KEY
+        sync: false
+      - key: ALCHEMY_WEBHOOK_ID
+        sync: false
+      - key: ALCHEMY_AUTH_TOKEN
+        sync: false
+
+      # Disable legacy WebSocket (costs millions of compute units)
       - key: ALCHEMY_API_KEY
         value: ""
 
@@ -64,28 +71,6 @@ services:
         sync: false
       - key: WHALE_THRESHOLD
         value: "10000"
-    disk:
-      name: polybot-data
-      mountPath: /data
-      sizeGB: 1
-
-  # Webhook Server for Alchemy deposit notifications
-  - type: web
-    name: polybot-webhook
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python run_webhook.py
-    envVars:
-      - key: MASTER_ENCRYPTION_KEY
-        sync: false
-      - key: DATABASE_PATH
-        value: /data/polybot.db
-      - key: ALCHEMY_WEBHOOK_SIGNING_KEY
-        sync: false
-      - key: ALCHEMY_WEBHOOK_ID
-        sync: false
-      - key: ALCHEMY_AUTH_TOKEN
-        sync: false
     disk:
       name: polybot-data
       mountPath: /data

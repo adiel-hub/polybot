@@ -408,6 +408,84 @@ async def run_whalebot():
         logger.error(f"Whale Bot error: {e}", exc_info=True)
 
 
+# ============== Webhook Server ==============
+
+async def run_webhook_server():
+    """Run the Alchemy webhook server for deposit notifications."""
+    import os
+    from aiohttp import web
+
+    logger = logging.getLogger("webhook.main")
+
+    try:
+        from config import settings
+        from database.connection import Database
+        from core.webhook import AlchemyWebhookHandler, AlchemyWebhookManager, create_webhook_app
+
+        # Check if webhook is configured
+        if not settings.alchemy_webhook_signing_key:
+            logger.info("Alchemy webhook not configured - webhook server disabled")
+            logger.info("Set ALCHEMY_WEBHOOK_SIGNING_KEY to enable deposit webhooks")
+            return
+
+        logger.info("Starting Webhook Server...")
+
+        # Initialize database
+        db = Database(settings.database_path)
+        await db.initialize()
+
+        # Create webhook handler
+        handler = AlchemyWebhookHandler(
+            db=db,
+            signing_key=settings.alchemy_webhook_signing_key,
+        )
+
+        # Load existing wallet addresses
+        await handler.load_wallet_addresses()
+
+        # Sync addresses with Alchemy if configured
+        if settings.alchemy_auth_token and settings.alchemy_webhook_id:
+            manager = AlchemyWebhookManager(
+                auth_token=settings.alchemy_auth_token,
+                webhook_id=settings.alchemy_webhook_id,
+            )
+            from database.repositories import WalletRepository
+            wallet_repo = WalletRepository(db)
+            addresses = await wallet_repo.get_all_addresses()
+            if addresses:
+                await manager.sync_addresses(addresses)
+                logger.info(f"Synced {len(addresses)} addresses with Alchemy webhook")
+            await manager.close()
+
+        # Create web app
+        app = create_webhook_app(handler)
+        runner = web.AppRunner(app)
+        await runner.setup()
+
+        # Use PORT env var (for Render) or settings
+        port = int(os.environ.get("PORT", settings.webhook_port))
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+
+        logger.info(f"Webhook server running on port {port}")
+        logger.info(f"Endpoint: /webhook/alchemy")
+
+        # Keep running
+        try:
+            while True:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await runner.cleanup()
+            logger.info("Webhook server stopped")
+
+    except ImportError as e:
+        logger.warning(f"Webhook dependencies not available: {e}")
+    except Exception as e:
+        logger.error(f"Webhook server error: {e}", exc_info=True)
+
+
 # ============== Main Runner ==============
 
 async def main():
@@ -426,6 +504,7 @@ async def main():
         asyncio.create_task(run_polybot(), name="polybot"),
         asyncio.create_task(run_polynews(), name="polynews"),
         asyncio.create_task(run_whalebot(), name="whalebot"),
+        asyncio.create_task(run_webhook_server(), name="webhook"),
     ]
 
     # Handle shutdown gracefully
