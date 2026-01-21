@@ -44,7 +44,7 @@ async def send_test_broadcast():
         return
 
     # Initialize database
-    db = Database(settings.database_path)
+    db = Database(settings.database_url)
     await db.initialize()
     print("✅ Database initialized")
 

@@ -58,8 +58,7 @@ async def main():
         )
 
     # Initialize database
-    Path(settings.database_path).parent.mkdir(parents=True, exist_ok=True)
-    db = Database(settings.database_path)
+    db = Database(settings.database_url)
     await db.initialize()
     logger.info("Database initialized")
 

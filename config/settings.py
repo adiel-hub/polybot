@@ -16,8 +16,11 @@ class Settings(BaseSettings):
     polygon_rpc_url: str = Field(default="https://polygon-rpc.com", description="Polygon RPC URL")
     gas_sponsor_private_key: str = Field(default="", description="Private key for gas sponsorship")
 
-    # Database
-    database_path: str = Field(default="./data/polybot.db", description="SQLite database path")
+    # Database (PostgreSQL)
+    database_url: str = Field(
+        default="",
+        description="PostgreSQL connection URL (e.g., postgresql://user:pass@host:5432/db)"
+    )
 
     # Polymarket
     clob_host: str = Field(default="https://clob.polymarket.com", description="Polymarket CLOB API host")
@@ -89,10 +92,6 @@ class Settings(BaseSettings):
         extra="ignore",  # Allow extra fields in .env
     )
 
-    @property
-    def db_path(self) -> Path:
-        """Return database path as Path object."""
-        return Path(self.database_path)
 
 
 # Global settings instance

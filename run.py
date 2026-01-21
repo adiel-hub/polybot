@@ -28,11 +28,8 @@ async def main():
     """Initialize and run the bot."""
     logger.info("Starting PolyBot...")
 
-    # Ensure data directory exists
-    Path(settings.database_path).parent.mkdir(parents=True, exist_ok=True)
-
     # Initialize database
-    db = Database(settings.database_path)
+    db = Database(settings.database_url)
     await db.initialize()
     logger.info("Database initialized")
 

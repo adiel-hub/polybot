@@ -50,7 +50,7 @@ async def test_real_broadcast():
         return
 
     # Initialize database
-    db = Database(settings.database_path)
+    db = Database(settings.database_url)
     await db.initialize()
     print("✅ Database connected")
 
@@ -158,7 +158,7 @@ async def test_broadcast_with_buttons():
     print("=" * 60)
 
     bot = Bot(token=bot_token)
-    db = Database(settings.database_path)
+    db = Database(settings.database_url)
     await db.initialize()
 
     service = BroadcastService(db, bot)

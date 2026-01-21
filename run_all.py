@@ -91,11 +91,8 @@ async def run_polybot():
 
         logger.info("Starting PolyBot...")
 
-        # Ensure data directory exists
-        Path(settings.database_path).parent.mkdir(parents=True, exist_ok=True)
-
         # Initialize database
-        db = Database(settings.database_path)
+        db = Database(settings.database_url)
         await db.initialize()
         logger.info("Database initialized")
 
@@ -161,12 +158,11 @@ async def run_polynews():
             logger.warning("No bot token for Polynews - disabled")
             return
 
-        # Wait for main bot to initialize the database first to avoid locking
+        # Wait for main bot to initialize the database first
         await asyncio.sleep(2)
 
-        # Initialize database (reuse same path)
-        db_path = Path(settings.database_path)
-        db = Database(str(db_path))
+        # Initialize database
+        db = Database(settings.database_url)
         await db.initialize()
 
         # Initialize services
@@ -437,7 +433,7 @@ async def run_webhook_server():
             from core.webhook import AlchemyWebhookHandler, AlchemyWebhookManager, create_webhook_app
 
             # Initialize database
-            db = Database(settings.database_path)
+            db = Database(settings.database_url)
             await db.initialize()
 
             # Create webhook handler

@@ -26,29 +26,33 @@ class ReferralRepository:
     ) -> ReferralCommission:
         """Create a new referral commission record."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
-            """
-            INSERT INTO referral_commissions
-            (referrer_id, referee_id, order_id, tier, trade_amount, trade_fee, commission_rate, commission_amount)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (referrer_id, referee_id, order_id, tier, trade_amount, trade_fee, commission_rate, commission_amount),
-        )
-        await conn.commit()
-
-        return await self.get_by_id(cursor.lastrowid)
+        try:
+            commission_id = await conn.fetchval(
+                """
+                INSERT INTO referral_commissions
+                (referrer_id, referee_id, order_id, tier, trade_amount, trade_fee, commission_rate, commission_amount)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING id
+                """,
+                referrer_id, referee_id, order_id, tier, trade_amount, trade_fee, commission_rate, commission_amount,
+            )
+            return await self.get_by_id(commission_id)
+        finally:
+            await self.db.release_connection(conn)
 
     async def get_by_id(self, commission_id: int) -> Optional[ReferralCommission]:
         """Get commission by ID."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
-            "SELECT * FROM referral_commissions WHERE id = ?",
-            (commission_id,),
-        )
-        row = await cursor.fetchone()
-        if row:
-            return ReferralCommission.from_row(row)
-        return None
+        try:
+            row = await conn.fetchrow(
+                "SELECT * FROM referral_commissions WHERE id = $1",
+                commission_id,
+            )
+            if row:
+                return ReferralCommission.from_row(row)
+            return None
+        finally:
+            await self.db.release_connection(conn)
 
     async def get_user_commissions(
         self,
@@ -57,17 +61,19 @@ class ReferralRepository:
     ) -> List[ReferralCommission]:
         """Get recent commission earnings for a user."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
-            """
-            SELECT * FROM referral_commissions
-            WHERE referrer_id = ?
-            ORDER BY created_at DESC
-            LIMIT ?
-            """,
-            (user_id, limit),
-        )
-        rows = await cursor.fetchall()
-        return [ReferralCommission.from_row(row) for row in rows]
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM referral_commissions
+                WHERE referrer_id = $1
+                ORDER BY created_at DESC
+                LIMIT $2
+                """,
+                user_id, limit,
+            )
+            return [ReferralCommission.from_row(row) for row in rows]
+        finally:
+            await self.db.release_connection(conn)
 
     async def get_referral_stats(self, user_id: int) -> Dict[str, Any]:
         """
@@ -80,47 +86,46 @@ class ReferralRepository:
         # Count referrals per tier
         tier_counts = {"t1": 0, "t2": 0, "t3": 0}
 
-        # Tier 1: direct referrals (users where referrer_id = user_id)
-        cursor = await conn.execute(
-            "SELECT COUNT(*) as count FROM users WHERE referrer_id = ?",
-            (user_id,),
-        )
-        row = await cursor.fetchone()
-        tier_counts["t1"] = row["count"]
-
-        # Tier 2: referrals of Tier 1 users
-        cursor = await conn.execute(
-            """
-            SELECT COUNT(*) as count FROM users
-            WHERE referrer_id IN (SELECT id FROM users WHERE referrer_id = ?)
-            """,
-            (user_id,),
-        )
-        row = await cursor.fetchone()
-        tier_counts["t2"] = row["count"]
-
-        # Tier 3: referrals of Tier 2 users
-        cursor = await conn.execute(
-            """
-            SELECT COUNT(*) as count FROM users
-            WHERE referrer_id IN (
-                SELECT id FROM users WHERE referrer_id IN (
-                    SELECT id FROM users WHERE referrer_id = ?
-                )
+        try:
+            # Tier 1: direct referrals (users where referrer_id = user_id)
+            row = await conn.fetchrow(
+                "SELECT COUNT(*) as count FROM users WHERE referrer_id = $1",
+                user_id,
             )
-            """,
-            (user_id,),
-        )
-        row = await cursor.fetchone()
-        tier_counts["t3"] = row["count"]
+            tier_counts["t1"] = row["count"]
 
-        # Get total commission earned from this user's referrals
-        cursor = await conn.execute(
-            "SELECT SUM(commission_amount) as total FROM referral_commissions WHERE referrer_id = ?",
-            (user_id,),
-        )
-        row = await cursor.fetchone()
-        total_from_commissions = row["total"] or 0.0
+            # Tier 2: referrals of Tier 1 users
+            row = await conn.fetchrow(
+                """
+                SELECT COUNT(*) as count FROM users
+                WHERE referrer_id IN (SELECT id FROM users WHERE referrer_id = $1)
+                """,
+                user_id,
+            )
+            tier_counts["t2"] = row["count"]
+
+            # Tier 3: referrals of Tier 2 users
+            row = await conn.fetchrow(
+                """
+                SELECT COUNT(*) as count FROM users
+                WHERE referrer_id IN (
+                    SELECT id FROM users WHERE referrer_id IN (
+                        SELECT id FROM users WHERE referrer_id = $1
+                    )
+                )
+                """,
+                user_id,
+            )
+            tier_counts["t3"] = row["count"]
+
+            # Get total commission earned from this user's referrals
+            row = await conn.fetchrow(
+                "SELECT SUM(commission_amount) as total FROM referral_commissions WHERE referrer_id = $1",
+                user_id,
+            )
+            total_from_commissions = row["total"] or 0.0
+        finally:
+            await self.db.release_connection(conn)
 
         return {
             "referral_counts": tier_counts,
@@ -135,30 +140,34 @@ class ReferralRepository:
         Returns: [(referrer_id, tier), ...] up to 3 tiers
         """
         conn = await self.db.get_connection()
-        chain = []
+        try:
+            chain = []
 
-        current_id = user_id
-        for tier in range(1, 4):  # Tiers 1, 2, 3
-            cursor = await conn.execute(
-                "SELECT referrer_id FROM users WHERE id = ?",
-                (current_id,),
-            )
-            row = await cursor.fetchone()
-            if not row or not row["referrer_id"]:
-                break
+            current_id = user_id
+            for tier in range(1, 4):  # Tiers 1, 2, 3
+                row = await conn.fetchrow(
+                    "SELECT referrer_id FROM users WHERE id = $1",
+                    current_id,
+                )
+                if not row or not row["referrer_id"]:
+                    break
 
-            referrer_id = row["referrer_id"]
-            chain.append((referrer_id, tier))
-            current_id = referrer_id
+                referrer_id = row["referrer_id"]
+                chain.append((referrer_id, tier))
+                current_id = referrer_id
 
-        return chain
+            return chain
+        finally:
+            await self.db.release_connection(conn)
 
     async def get_commissions_by_order(self, order_id: int) -> List[ReferralCommission]:
         """Get all commissions generated by a specific order."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
-            "SELECT * FROM referral_commissions WHERE order_id = ?",
-            (order_id,),
-        )
-        rows = await cursor.fetchall()
-        return [ReferralCommission.from_row(row) for row in rows]
+        try:
+            rows = await conn.fetch(
+                "SELECT * FROM referral_commissions WHERE order_id = $1",
+                order_id,
+            )
+            return [ReferralCommission.from_row(row) for row in rows]
+        finally:
+            await self.db.release_connection(conn)

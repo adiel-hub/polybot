@@ -33,35 +33,35 @@ async def main():
     print(f"{'='*60}\n")
 
     # Initialize database
-    db = Database(settings.database_path)
+    db = Database(settings.database_url)
     await db.initialize()
 
     # Check current state
     conn = await db.get_connection()
-    cursor = await conn.execute(
-        "SELECT id, user_id, address, safe_deployed, usdc_approved FROM wallets WHERE address = ?",
-        (wallet_address,)
-    )
-    row = await cursor.fetchone()
+    try:
+        row = await conn.fetchrow(
+            "SELECT id, user_id, address, safe_deployed, usdc_approved FROM wallets WHERE address = $1",
+            wallet_address,
+        )
 
-    if not row:
-        print(f"Wallet not found: {wallet_address}")
-        await db.close()
-        return
+        if not row:
+            print(f"Wallet not found: {wallet_address}")
+            return
 
-    print(f"Current state:")
-    print(f"  ID: {row['id']}")
-    print(f"  User ID: {row['user_id']}")
-    print(f"  Safe Deployed: {bool(row['safe_deployed'])}")
-    print(f"  USDC Approved: {bool(row['usdc_approved'])}")
-    print()
+        print(f"Current state:")
+        print(f"  ID: {row['id']}")
+        print(f"  User ID: {row['user_id']}")
+        print(f"  Safe Deployed: {bool(row['safe_deployed'])}")
+        print(f"  USDC Approved: {bool(row['usdc_approved'])}")
+        print()
 
-    # Reset approval flag
-    await conn.execute(
-        "UPDATE wallets SET usdc_approved = 0 WHERE address = ?",
-        (wallet_address,)
-    )
-    await conn.commit()
+        # Reset approval flag
+        await conn.execute(
+            "UPDATE wallets SET usdc_approved = FALSE WHERE address = $1",
+            wallet_address,
+        )
+    finally:
+        await db.release_connection(conn)
 
     print("Reset usdc_approved to 0")
     print()

@@ -18,7 +18,7 @@ httpx
 beautifulsoup4
 
 # Database
-aiosqlite
+asyncpg>=0.29.0  # PostgreSQL async driver
 
 # Cryptography
 cryptography
