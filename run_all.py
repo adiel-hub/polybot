@@ -411,7 +411,11 @@ async def run_whalebot():
 # ============== Webhook Server ==============
 
 async def run_webhook_server():
-    """Run the Alchemy webhook server for deposit notifications."""
+    """Run the webhook server for deposit notifications and health checks.
+
+    This server MUST always run when deployed to Render (or similar platforms)
+    because web services require a port to be bound for health checks.
+    """
     import os
     from aiohttp import web
 
@@ -420,55 +424,78 @@ async def run_webhook_server():
     try:
         from config import settings
         from database.connection import Database
-        from core.webhook import AlchemyWebhookHandler, AlchemyWebhookManager, create_webhook_app
-
-        # Check if webhook is configured
-        if not settings.alchemy_webhook_signing_key:
-            logger.info("Alchemy webhook not configured - webhook server disabled")
-            logger.info("Set ALCHEMY_WEBHOOK_SIGNING_KEY to enable deposit webhooks")
-            return
 
         logger.info("Starting Webhook Server...")
 
-        # Initialize database
-        db = Database(settings.database_path)
-        await db.initialize()
+        # Use PORT env var (for Render) or settings
+        port = int(os.environ.get("PORT", settings.webhook_port))
 
-        # Create webhook handler
-        handler = AlchemyWebhookHandler(
-            db=db,
-            signing_key=settings.alchemy_webhook_signing_key,
-        )
+        # Check if Alchemy webhook is configured
+        alchemy_configured = bool(settings.alchemy_webhook_signing_key)
 
-        # Load existing wallet addresses
-        await handler.load_wallet_addresses()
+        if alchemy_configured:
+            from core.webhook import AlchemyWebhookHandler, AlchemyWebhookManager, create_webhook_app
 
-        # Sync addresses with Alchemy if configured
-        if settings.alchemy_auth_token and settings.alchemy_webhook_id:
-            manager = AlchemyWebhookManager(
-                auth_token=settings.alchemy_auth_token,
-                webhook_id=settings.alchemy_webhook_id,
+            # Initialize database
+            db = Database(settings.database_path)
+            await db.initialize()
+
+            # Create webhook handler
+            handler = AlchemyWebhookHandler(
+                db=db,
+                signing_key=settings.alchemy_webhook_signing_key,
             )
-            from database.repositories import WalletRepository
-            wallet_repo = WalletRepository(db)
-            addresses = await wallet_repo.get_all_addresses()
-            if addresses:
-                await manager.sync_addresses(addresses)
-                logger.info(f"Synced {len(addresses)} addresses with Alchemy webhook")
-            await manager.close()
 
-        # Create web app
-        app = create_webhook_app(handler)
+            # Load existing wallet addresses
+            await handler.load_wallet_addresses()
+
+            # Sync addresses with Alchemy if configured
+            if settings.alchemy_auth_token and settings.alchemy_webhook_id:
+                manager = AlchemyWebhookManager(
+                    auth_token=settings.alchemy_auth_token,
+                    webhook_id=settings.alchemy_webhook_id,
+                )
+                from database.repositories import WalletRepository
+                wallet_repo = WalletRepository(db)
+                addresses = await wallet_repo.get_all_addresses()
+                if addresses:
+                    await manager.sync_addresses(addresses)
+                    logger.info(f"Synced {len(addresses)} addresses with Alchemy webhook")
+                await manager.close()
+
+            # Create web app with Alchemy webhook handler
+            app = create_webhook_app(handler)
+            logger.info("Alchemy webhook handler configured")
+        else:
+            # Create minimal web app with just health check endpoint
+            # This ensures Render can verify the service is running
+            logger.info("Alchemy webhook not configured - running minimal health server")
+            logger.info("Set ALCHEMY_WEBHOOK_SIGNING_KEY to enable deposit webhooks")
+
+            app = web.Application()
+
+        # Add health check endpoint (always available)
+        async def health_check(request):
+            return web.json_response({
+                "status": "healthy",
+                "service": "polybot",
+                "webhook_enabled": alchemy_configured,
+            })
+
+        app.router.add_get("/health", health_check)
+        app.router.add_get("/", health_check)  # Root path for Render health checks
+
         runner = web.AppRunner(app)
         await runner.setup()
 
-        # Use PORT env var (for Render) or settings
-        port = int(os.environ.get("PORT", settings.webhook_port))
         site = web.TCPSite(runner, "0.0.0.0", port)
         await site.start()
 
         logger.info(f"Webhook server running on port {port}")
-        logger.info(f"Endpoint: /webhook/alchemy")
+        if alchemy_configured:
+            logger.info(f"Endpoints: /webhook/alchemy, /health")
+        else:
+            logger.info(f"Endpoints: /health (webhook disabled)")
 
         # Keep running
         try:
