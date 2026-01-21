@@ -1,0 +1,59 @@
+# Render Blueprint for PolyBot
+# Deploy both the Telegram bot and webhook server
+
+services:
+  # Main Telegram Bot
+  - type: worker
+    name: polybot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: MASTER_ENCRYPTION_KEY
+        sync: false
+      - key: POLYGON_RPC_URL
+        value: https://polygon-rpc.com
+      - key: DATABASE_PATH
+        value: /data/polybot.db
+      - key: GAS_SPONSOR_PRIVATE_KEY
+        sync: false
+      - key: ADMIN_TELEGRAM_IDS
+        sync: false
+      - key: POLY_BUILDER_API_KEY
+        sync: false
+      - key: POLY_BUILDER_SECRET
+        sync: false
+      - key: POLY_BUILDER_PASSPHRASE
+        sync: false
+      - key: ALCHEMY_API_KEY
+        value: ""
+    disk:
+      name: polybot-data
+      mountPath: /data
+      sizeGB: 1
+
+  # Webhook Server for Alchemy deposit notifications
+  - type: web
+    name: polybot-webhook
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run_webhook.py
+    envVars:
+      - key: MASTER_ENCRYPTION_KEY
+        sync: false
+      - key: DATABASE_PATH
+        value: /data/polybot.db
+      - key: ALCHEMY_WEBHOOK_SIGNING_KEY
+        sync: false
+      - key: ALCHEMY_WEBHOOK_ID
+        sync: false
+      - key: ALCHEMY_AUTH_TOKEN
+        sync: false
+      - key: WEBHOOK_PORT
+        value: "10000"
+    disk:
+      name: polybot-data
+      mountPath: /data
+      sizeGB: 1

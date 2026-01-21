@@ -22,6 +22,7 @@ Note: For local development, use ngrok to expose the webhook:
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 from aiohttp import web
@@ -31,6 +32,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config import settings
+
+# Render uses PORT env var
+PORT = int(os.environ.get("PORT", settings.webhook_port))
 from database.connection import Database
 from core.webhook import AlchemyWebhookHandler, AlchemyWebhookManager, create_webhook_app
 
@@ -91,11 +95,11 @@ async def main():
     runner = web.AppRunner(app)
     await runner.setup()
 
-    site = web.TCPSite(runner, "0.0.0.0", settings.webhook_port)
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
 
-    logger.info(f"Webhook server running on port {settings.webhook_port}")
-    logger.info(f"Webhook endpoint: http://0.0.0.0:{settings.webhook_port}/webhook/alchemy")
+    logger.info(f"Webhook server running on port {PORT}")
+    logger.info(f"Webhook endpoint: http://0.0.0.0:{PORT}/webhook/alchemy")
     logger.info("Waiting for webhooks...")
 
     # Keep running
