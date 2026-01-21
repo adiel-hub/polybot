@@ -28,8 +28,8 @@ class Wallet:
     @classmethod
     def from_row(cls, row) -> "Wallet":
         """Create Wallet from database row."""
-        # Handle both dict-like and sqlite3.Row objects
-        # sqlite3.Row doesn't have .get() method, so use try/except for optional fields
+        # Handle asyncpg Record objects (dict-like)
+        # Use try/except for optional fields that may not exist in older database versions
         try:
             eoa_address = row["eoa_address"]
         except (KeyError, IndexError):

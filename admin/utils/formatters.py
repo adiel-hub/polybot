@@ -38,7 +38,7 @@ def format_datetime(dt: Optional[datetime | str]) -> str:
     """Format datetime for display."""
     if not dt:
         return "N/A"
-    # Handle string datetime from SQLite
+    # Handle string datetime (legacy compatibility)
     if isinstance(dt, str):
         try:
             dt = datetime.fromisoformat(dt)

@@ -1,1 +1,0 @@
-"""PolyBot test suite."""

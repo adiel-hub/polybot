@@ -1,0 +1,10 @@
+# Render Blueprint - PostgreSQL Database Only
+# Use this to add PostgreSQL to an existing Render web service
+
+databases:
+  - name: polybot-db
+    databaseName: polybot
+    user: polybot_user
+    plan: starter  # 256MB RAM, 1GB storage - $7/month
+    region: oregon  # Change to your preferred region
+    ipAllowList: []  # Empty = allow all IPs

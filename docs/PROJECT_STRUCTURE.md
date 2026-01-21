@@ -227,7 +227,7 @@ polybot/
 - **python-telegram-bot** v21 - Telegram bot framework
 - **py-clob-client** - Polymarket trading
 - **web3** v7 - Blockchain interactions
-- **aiosqlite** - Async SQLite
+- **asyncpg** - Async PostgreSQL
 - **cryptography** - Key encryption
 - **pytest** - Testing framework
 
