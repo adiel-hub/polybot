@@ -25,9 +25,9 @@ class TradeCardData:
 class TradeCardGenerator:
     """Generate shareable trade card images like Bybit PnL cards."""
 
-    # Card dimensions
-    CARD_WIDTH = 800
-    CARD_HEIGHT = 1000
+    # Card dimensions (16:9 aspect ratio)
+    CARD_WIDTH = 1280
+    CARD_HEIGHT = 720
 
     # Colors (Polymarket purple theme)
     BG_COLOR = (18, 18, 28)  # Dark background
@@ -63,7 +63,7 @@ class TradeCardGenerator:
 
     def generate(self, data: TradeCardData) -> io.BytesIO:
         """
-        Generate a trade card image.
+        Generate a trade card image in 16:9 landscape format.
 
         Args:
             data: Trade card data
@@ -75,18 +75,24 @@ class TradeCardGenerator:
         img = Image.new('RGB', (self.CARD_WIDTH, self.CARD_HEIGHT), self.BG_COLOR)
         draw = ImageDraw.Draw(img)
 
-        # Draw card background
-        card_margin = 30
+        # Draw main card background
+        card_margin = 24
         card_rect = [
             card_margin,
             card_margin,
             self.CARD_WIDTH - card_margin,
-            self.CARD_HEIGHT - 180  # Leave room for referral section
+            self.CARD_HEIGHT - card_margin
         ]
         self._draw_rounded_rect(draw, card_rect, 20, self.CARD_BG)
 
-        # Draw Polymarket logo/text
-        y_pos = 60
+        # Layout: Left section (60%) for main info, Right section (40%) for stats
+        left_section_width = int(self.CARD_WIDTH * 0.58)
+        right_section_x = left_section_width + 40
+
+        # === LEFT SECTION ===
+
+        # Polymarket logo/text
+        y_pos = 55
         draw.text(
             (50, y_pos),
             "POLYMARKET",
@@ -94,23 +100,23 @@ class TradeCardGenerator:
             fill=self.ACCENT_COLOR
         )
 
-        # Draw outcome badge (YES/NO)
+        # Outcome badge (YES/NO) next to logo
         badge_text = f"{data.outcome}"
         badge_color = self.PROFIT_COLOR if data.outcome == "YES" else self.LOSS_COLOR
-        self._draw_badge(draw, (620, y_pos - 5), badge_text, badge_color)
+        self._draw_badge(draw, (250, y_pos - 5), badge_text, badge_color)
 
-        # Draw market question (truncated if too long)
-        y_pos = 130
-        question = self._truncate_text(data.market_question, 45)
-        for line in self._wrap_text(question, 35):
+        # Market question
+        y_pos = 115
+        question = self._truncate_text(data.market_question, 60)
+        for line in self._wrap_text(question, 40):
             draw.text((50, y_pos), line, font=self.medium_font, fill=self.TEXT_WHITE)
-            y_pos += 35
+            y_pos += 38
 
-        # Draw ROI
+        # ROI (large, prominent)
+        y_pos = 220
+        draw.text((50, y_pos), "ROI", font=self.small_font, fill=self.TEXT_GRAY)
+
         y_pos = 250
-        draw.text((50, y_pos), "ROI", font=self.medium_font, fill=self.TEXT_GRAY)
-
-        y_pos = 290
         roi_color = self.PROFIT_COLOR if data.pnl_percentage >= 0 else self.LOSS_COLOR
         roi_sign = "+" if data.pnl_percentage >= 0 else ""
         draw.text(
@@ -120,11 +126,11 @@ class TradeCardGenerator:
             fill=roi_color
         )
 
-        # Draw PnL amount
-        y_pos = 380
-        draw.text((50, y_pos), "Profit/Loss", font=self.medium_font, fill=self.TEXT_GRAY)
+        # Profit/Loss amount
+        y_pos = 340
+        draw.text((50, y_pos), "Profit/Loss", font=self.small_font, fill=self.TEXT_GRAY)
 
-        y_pos = 420
+        y_pos = 370
         pnl_sign = "+" if data.pnl >= 0 else ""
         draw.text(
             (50, y_pos),
@@ -133,21 +139,42 @@ class TradeCardGenerator:
             fill=roi_color
         )
 
-        # Draw entry/exit prices
-        y_pos = 520
-        draw.text((50, y_pos), "Entry Price", font=self.medium_font, fill=self.TEXT_GRAY)
-        y_pos = 555
-        draw.text((50, y_pos), f"{data.entry_price:.4f}", font=self.large_font, fill=self.TEXT_WHITE)
+        # === RIGHT SECTION (Stats in a column) ===
 
-        y_pos = 640
-        draw.text((50, y_pos), "Exit Price", font=self.medium_font, fill=self.TEXT_GRAY)
-        y_pos = 675
-        draw.text((50, y_pos), f"{data.exit_price:.4f}", font=self.large_font, fill=self.TEXT_WHITE)
+        # Draw vertical divider
+        divider_x = left_section_width
+        draw.line(
+            [(divider_x, 50), (divider_x, self.CARD_HEIGHT - 130)],
+            fill=(60, 60, 80),
+            width=2
+        )
 
-        # Draw decorative element (arrow or rocket-like shape)
-        self._draw_profit_indicator(draw, (600, 400), data.pnl_percentage >= 0)
+        # Stats section
+        stats_x = right_section_x
+        stats_y = 70
 
-        # Draw referral section at bottom
+        # Entry Price
+        draw.text((stats_x, stats_y), "Entry Price", font=self.small_font, fill=self.TEXT_GRAY)
+        stats_y += 30
+        draw.text((stats_x, stats_y), f"{data.entry_price:.4f}", font=self.medium_font, fill=self.TEXT_WHITE)
+
+        # Exit Price
+        stats_y += 70
+        draw.text((stats_x, stats_y), "Exit Price", font=self.small_font, fill=self.TEXT_GRAY)
+        stats_y += 30
+        draw.text((stats_x, stats_y), f"{data.exit_price:.4f}", font=self.medium_font, fill=self.TEXT_WHITE)
+
+        # Position Size
+        stats_y += 70
+        draw.text((stats_x, stats_y), "Position Size", font=self.small_font, fill=self.TEXT_GRAY)
+        stats_y += 30
+        draw.text((stats_x, stats_y), f"${data.size:.2f}", font=self.medium_font, fill=self.TEXT_WHITE)
+
+        # Draw profit indicator arrows on the right side
+        indicator_x = self.CARD_WIDTH - 150
+        self._draw_profit_indicator(draw, (indicator_x, 150), data.pnl_percentage >= 0)
+
+        # === BOTTOM REFERRAL SECTION ===
         self._draw_referral_section(draw, img, data)
 
         # Save to buffer
@@ -190,52 +217,59 @@ class TradeCardGenerator:
         x, y = pos
         color = self.PROFIT_COLOR if is_profit else self.LOSS_COLOR
 
-        # Draw multiple arrows
-        for i, offset in enumerate([0, 60, 120]):
-            arrow_y = y + offset if not is_profit else y + 120 - offset
-            alpha = 255 - (i * 60)  # Fade effect
+        # Draw multiple arrows with fade effect
+        arrow_spacing = 50
+        arrow_width = 40
+        arrow_height = 25
 
-            # Draw upward or downward arrow
+        for i in range(3):
+            # Calculate opacity by adjusting color intensity
+            fade = 1.0 - (i * 0.25)
+            faded_color = tuple(int(c * fade) for c in color)
+
             if is_profit:
+                arrow_y = y + (2 - i) * arrow_spacing
+                # Upward arrow
                 points = [
-                    (x, arrow_y + 30),
-                    (x + 25, arrow_y),
-                    (x + 50, arrow_y + 30)
+                    (x, arrow_y + arrow_height),
+                    (x + arrow_width // 2, arrow_y),
+                    (x + arrow_width, arrow_y + arrow_height)
                 ]
             else:
+                arrow_y = y + i * arrow_spacing
+                # Downward arrow
                 points = [
                     (x, arrow_y),
-                    (x + 25, arrow_y + 30),
-                    (x + 50, arrow_y)
+                    (x + arrow_width // 2, arrow_y + arrow_height),
+                    (x + arrow_width, arrow_y)
                 ]
 
-            draw.polygon(points, fill=color)
+            draw.polygon(points, fill=faded_color)
 
     def _draw_referral_section(self, draw: ImageDraw, img: Image, data: TradeCardData):
         """Draw the referral section at the bottom."""
-        y_start = self.CARD_HEIGHT - 160
+        y_start = self.CARD_HEIGHT - 100
 
         # Draw separator line
         draw.line(
-            [(30, y_start), (self.CARD_WIDTH - 30, y_start)],
-            fill=self.TEXT_GRAY,
+            [(40, y_start), (self.CARD_WIDTH - 40, y_start)],
+            fill=(60, 60, 80),
             width=1
         )
 
         # Draw referral text
-        y_pos = y_start + 20
+        y_pos = y_start + 18
         draw.text(
             (50, y_pos),
             "Trade on Polymarket with PolyBot!",
-            font=self.medium_font,
+            font=self.small_font,
             fill=self.TEXT_WHITE
         )
 
-        y_pos += 40
         draw.text(
-            (50, y_pos),
+            (400, y_pos),
             f"Referral Code: {data.referral_code}",
-            font=self.title_font,
+            font=self.small_font,
             fill=self.ACCENT_COLOR
         )
 
@@ -243,20 +277,20 @@ class TradeCardGenerator:
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=4,
-            border=2,
+            box_size=3,
+            border=1,
         )
         qr.add_data(data.referral_link)
         qr.make(fit=True)
-        qr_img = qr.make_image(fill_color="white", back_color=self.BG_COLOR)
+        qr_img = qr.make_image(fill_color="white", back_color=self.CARD_BG)
         qr_img = qr_img.convert('RGB')
 
-        # Resize QR code
-        qr_size = 100
+        # Resize QR code (smaller for 16:9 layout)
+        qr_size = 70
         qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.LANCZOS)
 
         # Paste QR code
-        qr_pos = (self.CARD_WIDTH - qr_size - 50, y_start + 30)
+        qr_pos = (self.CARD_WIDTH - qr_size - 50, y_start + 10)
         img.paste(qr_img, qr_pos)
 
     def _truncate_text(self, text: str, max_chars: int) -> str:
