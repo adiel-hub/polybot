@@ -14,11 +14,11 @@ To run the integration tests, I need you to provide the following in `test.env`:
    ```
    Copy the output to `test.env` as `MASTER_ENCRYPTION_KEY`
 
-2. **Alchemy API Key** (free):
-   - Sign up at https://www.alchemy.com/
+2. **Polygon RPC URL**:
+   - Sign up at https://www.alchemy.com/ (free)
    - Create Polygon Mainnet app
-   - Copy API key to `test.env` as `ALCHEMY_API_KEY`
-   - Also update `POLYGON_RPC_URL` with: `https://polygon-mainnet.g.alchemy.com/v2/YOUR_API_KEY`
+   - Update `POLYGON_RPC_URL` with: `https://polygon-mainnet.g.alchemy.com/v2/YOUR_API_KEY`
+   - Optionally configure Alchemy webhooks for deposit detection (see .env.example)
 
 3. **Test Telegram Bot Token**:
    - Message @BotFather on Telegram

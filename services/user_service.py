@@ -24,16 +24,11 @@ class UserService:
         self.wallet_repo = WalletRepository(db)
         self.encryption = encryption
         self._trading_service = None  # Set via set_trading_service() to avoid circular import
-        self._websocket_service = None  # Set via set_websocket_service() for deposit monitoring (legacy)
         self._webhook_manager = None  # Set via set_webhook_manager() for Alchemy webhook
 
     def set_trading_service(self, trading_service) -> None:
         """Set trading service reference for CLOB client pre-initialization."""
         self._trading_service = trading_service
-
-    def set_websocket_service(self, websocket_service) -> None:
-        """Set websocket service reference for deposit monitoring of new wallets (legacy)."""
-        self._websocket_service = websocket_service
 
     def set_webhook_manager(self, webhook_manager) -> None:
         """Set Alchemy webhook manager for deposit monitoring of new wallets."""
@@ -95,13 +90,9 @@ class UserService:
 
         logger.info(f"Registered user {telegram_id} with EOA wallet {address[:10]}...")
 
-        # Add wallet to deposit monitoring (webhook or legacy websocket)
+        # Add wallet to Alchemy webhook for deposit monitoring
         if self._webhook_manager:
-            # Register address with Alchemy webhook
             asyncio.create_task(self._register_webhook_address(address))
-        elif self._websocket_service:
-            # Legacy: add to websocket monitoring
-            await self._websocket_service.add_wallet(address)
 
         # Pre-initialize CLOB client so first trade is faster
         if self._trading_service:

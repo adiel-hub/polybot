@@ -8,7 +8,6 @@ from database.connection import Database
 from core.wallet import KeyEncryption
 from core.websocket.manager import WebSocketManager
 from core.websocket.price_subscriber import PriceSubscriber
-from core.websocket.deposit_subscriber import DepositSubscriber
 from core.websocket.copy_trade_subscriber import CopyTradeSubscriber
 from core.websocket.order_fill_subscriber import OrderFillSubscriber
 from core.websocket.resolution_subscriber import ResolutionSubscriber
@@ -21,7 +20,8 @@ class WebSocketService:
     """
     Central WebSocket service that manages all real-time subscriptions.
 
-    Replaces the polling-based jobs with WebSocket-based real-time updates.
+    Note: Deposit detection is now handled by Alchemy webhooks (see run_all.py),
+    not WebSocket subscriptions. This dramatically reduces Alchemy compute costs.
     """
 
     def __init__(
@@ -39,7 +39,6 @@ class WebSocketService:
         # Core components
         self.ws_manager = WebSocketManager()
         self.price_subscriber: PriceSubscriber = None
-        self.deposit_subscriber: DepositSubscriber = None
         self.copy_trade_subscriber: CopyTradeSubscriber = None
         self.order_fill_subscriber: OrderFillSubscriber = None
         self.resolution_subscriber: ResolutionSubscriber = None
@@ -60,19 +59,9 @@ class WebSocketService:
         )
         await self.price_subscriber.start()
 
-        # Initialize deposit subscriber (Alchemy WebSocket)
-        if settings.alchemy_ws_url:
-            self.deposit_subscriber = DepositSubscriber(
-                db=self.db,
-                alchemy_ws_url=settings.alchemy_ws_url,
-                bot_send_message=self.bot_send_message,
-            )
-            await self.deposit_subscriber.start()
-        else:
-            logger.warning(
-                "ALCHEMY_API_KEY not configured - deposit detection disabled. "
-                "Set ALCHEMY_API_KEY in .env for real-time deposit notifications."
-            )
+        # Note: Deposit detection is now handled by Alchemy webhooks
+        # See run_all.py -> run_webhook_server() for the new implementation
+        # This saves millions of Alchemy compute units per day
 
         # Initialize copy trade subscriber
         self.copy_trade_subscriber = CopyTradeSubscriber(
@@ -176,9 +165,6 @@ class WebSocketService:
         if self.claim_service:
             await self.claim_service.close()
 
-        if self.deposit_subscriber:
-            await self.deposit_subscriber.stop()
-
         await self.ws_manager.stop()
 
         logger.info("WebSocket service stopped")
@@ -199,11 +185,6 @@ class WebSocketService:
         """Add a position for price monitoring."""
         if self.price_subscriber:
             await self.price_subscriber.add_position(position)
-
-    async def add_wallet(self, address: str) -> None:
-        """Add a wallet for deposit monitoring."""
-        if self.deposit_subscriber:
-            await self.deposit_subscriber.add_wallet(address)
 
     async def add_copy_subscription(self, subscription) -> None:
         """Add a copy trading subscription."""
@@ -275,11 +256,6 @@ async def setup_websocket_service(application: Application) -> WebSocketService:
 
     # Store in bot_data for access in handlers
     application.bot_data["ws_service"] = ws_service
-
-    # Wire up to user_service for new wallet deposit monitoring
-    user_service = application.bot_data.get("user_service")
-    if user_service:
-        user_service.set_websocket_service(ws_service)
 
     logger.info("WebSocket service configured and started")
 

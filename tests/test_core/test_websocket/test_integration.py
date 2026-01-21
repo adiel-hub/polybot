@@ -7,12 +7,11 @@ They require network access and may be slow - run with: pytest -m integration
 To run these tests:
     pytest tests/test_core/test_websocket/test_integration.py -v -s
 
-Note: Some tests require ALCHEMY_API_KEY in environment.
+Note: Deposit detection now uses Alchemy webhooks (see core/webhook/).
 """
 
 import asyncio
 import json
-import os
 import pytest
 import websockets
 from websockets import State
@@ -35,15 +34,6 @@ pytestmark = pytest.mark.integration
 # Polymarket WebSocket URLs
 POLYMARKET_WS_MARKET_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 POLYMARKET_WS_USER_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/user"
-
-# Alchemy WebSocket URL template
-ALCHEMY_WS_URL_TEMPLATE = "wss://polygon-mainnet.g.alchemy.com/v2/{api_key}"
-
-# USDC contract on Polygon
-USDC_POLYGON_ADDRESS = "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
-
-# Transfer event signature: keccak256("Transfer(address,address,uint256)")
-TRANSFER_EVENT_SIGNATURE = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 
 class WebSocketTestCollector:
@@ -219,195 +209,8 @@ class TestPolymarketSubscriptions:
             pytest.fail(f"Subscribe/Unsubscribe cycle failed: {e}")
 
 
-class TestAlchemyWebSocket:
-    """Test Alchemy WebSocket for Polygon deposit monitoring."""
-
-    @pytest.fixture
-    def alchemy_api_key(self):
-        """Get Alchemy API key from environment."""
-        api_key = os.environ.get("ALCHEMY_API_KEY", "")
-        if not api_key or api_key == "your_alchemy_api_key_here":
-            pytest.skip("ALCHEMY_API_KEY not configured - skipping Alchemy tests")
-        return api_key
-
-    @pytest.mark.asyncio
-    async def test_alchemy_websocket_connects(self, alchemy_api_key):
-        """Test that we can connect to Alchemy Polygon WebSocket."""
-        collector = WebSocketTestCollector()
-        collector.start_time = datetime.now()
-
-        ws_url = ALCHEMY_WS_URL_TEMPLATE.format(api_key=alchemy_api_key)
-
-        try:
-            async with websockets.connect(
-                ws_url,
-                ping_interval=20,
-                ping_timeout=10,
-            ) as ws:
-                collector.connection_established = True
-                print(f"\n✅ Connected to Alchemy Polygon WebSocket")
-                print(f"   URL: wss://polygon-mainnet.g.alchemy.com/v2/***")
-
-                assert is_ws_open(ws), "WebSocket should be open"
-
-        except Exception as e:
-            collector.add_error(str(e))
-            pytest.fail(f"Failed to connect to Alchemy WebSocket: {e}")
-        finally:
-            collector.end_time = datetime.now()
-            print(f"   Duration: {collector.duration_seconds:.2f}s")
-
-    @pytest.mark.asyncio
-    async def test_alchemy_subscribe_to_usdc_transfers(self, alchemy_api_key):
-        """Test subscribing to USDC Transfer events on Polygon."""
-        collector = WebSocketTestCollector()
-        collector.start_time = datetime.now()
-
-        ws_url = ALCHEMY_WS_URL_TEMPLATE.format(api_key=alchemy_api_key)
-
-        try:
-            async with websockets.connect(
-                ws_url,
-                ping_interval=20,
-                ping_timeout=10,
-            ) as ws:
-                collector.connection_established = True
-                print(f"\n✅ Connected to Alchemy Polygon WebSocket")
-
-                # Subscribe to USDC Transfer events
-                subscription_request = {
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "eth_subscribe",
-                    "params": [
-                        "logs",
-                        {
-                            "address": USDC_POLYGON_ADDRESS,
-                            "topics": [TRANSFER_EVENT_SIGNATURE],
-                        }
-                    ]
-                }
-
-                await ws.send(json.dumps(subscription_request))
-                print(f"   📤 Sent subscription for USDC Transfer events")
-                print(f"   📍 USDC Contract: {USDC_POLYGON_ADDRESS}")
-
-                # Wait for subscription confirmation
-                try:
-                    async with asyncio.timeout(5):
-                        response = await ws.recv()
-                        data = json.loads(response)
-                        collector.add_message(data)
-
-                        if "result" in data:
-                            subscription_id = data["result"]
-                            print(f"   ✅ Subscription confirmed: {subscription_id}")
-                        elif "error" in data:
-                            pytest.fail(f"Subscription error: {data['error']}")
-
-                except asyncio.TimeoutError:
-                    pytest.fail("Timeout waiting for subscription confirmation")
-
-                # Listen for a few Transfer events (USDC is very active)
-                print(f"   👂 Listening for USDC transfers (up to 30s)...")
-                try:
-                    async with asyncio.timeout(30):
-                        while len(collector.messages) < 6:  # Get 5 transfer events
-                            message = await ws.recv()
-                            data = json.loads(message)
-                            collector.add_message(data)
-
-                            if "params" in data and "result" in data["params"]:
-                                log = data["params"]["result"]
-                                tx_hash = log.get("transactionHash", "unknown")[:20]
-                                block = int(log.get("blockNumber", "0x0"), 16)
-                                print(f"   📥 Transfer detected - Block: {block}, TX: {tx_hash}...")
-
-                except asyncio.TimeoutError:
-                    print(f"   ⏱️ Timeout - collected {len(collector.messages) - 1} transfer events")
-
-                # We should have received at least the subscription confirmation
-                assert len(collector.messages) >= 1, "Should receive subscription confirmation"
-                print(f"   📊 Total events received: {len(collector.messages) - 1}")
-
-        except Exception as e:
-            collector.add_error(str(e))
-            pytest.fail(f"Alchemy USDC subscription test failed: {e}")
-        finally:
-            collector.end_time = datetime.now()
-            print(f"   Duration: {collector.duration_seconds:.2f}s")
-
-    @pytest.mark.asyncio
-    async def test_alchemy_get_block_number(self, alchemy_api_key):
-        """Test JSON-RPC call over WebSocket to get current block."""
-        ws_url = ALCHEMY_WS_URL_TEMPLATE.format(api_key=alchemy_api_key)
-
-        try:
-            async with websockets.connect(ws_url, ping_interval=20) as ws:
-                print(f"\n✅ Connected to Alchemy Polygon WebSocket")
-
-                # Get current block number
-                request = {
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "eth_blockNumber",
-                    "params": []
-                }
-
-                await ws.send(json.dumps(request))
-                response = await ws.recv()
-                data = json.loads(response)
-
-                assert "result" in data, "Response should contain result"
-                block_number = int(data["result"], 16)
-                print(f"   📦 Current Polygon block: {block_number:,}")
-
-                assert block_number > 0, "Block number should be positive"
-
-        except Exception as e:
-            pytest.fail(f"Failed to get block number: {e}")
-
-    @pytest.mark.asyncio
-    async def test_alchemy_get_usdc_balance(self, alchemy_api_key):
-        """Test getting USDC balance of a known address via WebSocket."""
-        ws_url = ALCHEMY_WS_URL_TEMPLATE.format(api_key=alchemy_api_key)
-
-        # Use USDC contract address itself (will have 0 balance but tests the call)
-        test_address = "0x0000000000000000000000000000000000000001"
-
-        try:
-            async with websockets.connect(ws_url, ping_interval=20) as ws:
-                print(f"\n✅ Connected to Alchemy Polygon WebSocket")
-
-                # ERC20 balanceOf(address) function selector
-                # balanceOf(address) = 0x70a08231
-                padded_address = test_address[2:].lower().zfill(64)
-                data_hex = f"0x70a08231{padded_address}"
-
-                request = {
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "eth_call",
-                    "params": [
-                        {
-                            "to": USDC_POLYGON_ADDRESS,
-                            "data": data_hex,
-                        },
-                        "latest"
-                    ]
-                }
-
-                await ws.send(json.dumps(request))
-                response = await ws.recv()
-                result = json.loads(response)
-
-                assert "result" in result, f"Response should contain result: {result}"
-                balance_hex = result["result"]
-                balance = int(balance_hex, 16) / 10**6  # USDC has 6 decimals
-                print(f"   💰 USDC balance of test address: {balance:.6f}")
-
-        except Exception as e:
-            pytest.fail(f"Failed to get USDC balance: {e}")
+# Note: Alchemy WebSocket tests removed - deposit detection now uses webhooks
+# See core/webhook/ for the new webhook-based implementation
 
 
 class TestWebSocketReconnection:
@@ -577,67 +380,8 @@ class TestEndToEndWebSocketFlow:
         print(f"   5️⃣ Disconnected")
         print(f"   ✅ Full flow completed successfully")
 
-    @pytest.mark.asyncio
-    async def test_full_deposit_monitoring_flow(self):
-        """Test complete deposit monitoring flow with Alchemy."""
-        api_key = os.environ.get("ALCHEMY_API_KEY", "")
-        if not api_key or api_key == "your_alchemy_api_key_here":
-            pytest.skip("ALCHEMY_API_KEY not configured")
-
-        print(f"\n🚀 Running full deposit monitoring flow...")
-
-        ws_url = ALCHEMY_WS_URL_TEMPLATE.format(api_key=api_key)
-        subscription_id = None
-
-        async with websockets.connect(ws_url, ping_interval=20) as ws:
-            print(f"   1️⃣ Connected to Alchemy")
-
-            # Subscribe to USDC transfers
-            await ws.send(json.dumps({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "eth_subscribe",
-                "params": [
-                    "logs",
-                    {
-                        "address": USDC_POLYGON_ADDRESS,
-                        "topics": [TRANSFER_EVENT_SIGNATURE],
-                    }
-                ]
-            }))
-
-            # Get subscription confirmation
-            response = await ws.recv()
-            data = json.loads(response)
-            subscription_id = data.get("result")
-            print(f"   2️⃣ Subscribed (ID: {subscription_id})")
-
-            # Wait for some events
-            events = []
-            try:
-                async with asyncio.timeout(15):
-                    while len(events) < 3:
-                        msg = await ws.recv()
-                        event_data = json.loads(msg)
-                        if "params" in event_data:
-                            events.append(event_data)
-                            print(f"   3️⃣ Received transfer event #{len(events)}")
-            except asyncio.TimeoutError:
-                print(f"   ⏱️ Timeout (received {len(events)} events)")
-
-            # Unsubscribe
-            if subscription_id:
-                await ws.send(json.dumps({
-                    "jsonrpc": "2.0",
-                    "id": 2,
-                    "method": "eth_unsubscribe",
-                    "params": [subscription_id]
-                }))
-                unsubscribe_response = await ws.recv()
-                print(f"   4️⃣ Unsubscribed")
-
-        print(f"   5️⃣ Disconnected")
-        print(f"   ✅ Full deposit monitoring flow completed")
+    # Note: Deposit monitoring now uses Alchemy webhooks instead of WebSocket
+    # See core/webhook/ and tests for the new implementation
 
 
 # Fixture to run only integration tests

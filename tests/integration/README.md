@@ -58,7 +58,6 @@ MASTER_ENCRYPTION_KEY=<run_command_below>
 
 # Polygon RPC (free tier is fine)
 POLYGON_RPC_URL=https://polygon-mainnet.g.alchemy.com/v2/your_key
-ALCHEMY_API_KEY=your_alchemy_key
 
 # Test Database (separate from production!)
 DATABASE_PATH=./data/test_integration.db
@@ -266,9 +265,9 @@ Tests clean up after themselves:
 ### "WebSocket connection failed"
 
 **Solution:**
-- Verify `ALCHEMY_API_KEY` is set
-- Check Alchemy subscription tier (free tier has limits)
-- Test WebSocket URL manually
+- Check Polymarket WebSocket URL availability
+- Check network connectivity
+- Verify WebSocket client is functioning
 
 ## Best Practices
 

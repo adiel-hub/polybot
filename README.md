@@ -109,7 +109,9 @@ Create a `.env` file with the following variables:
 | `TELEGRAM_BOT_TOKEN` | Bot token from [@BotFather](https://t.me/BotFather) | Yes |
 | `MASTER_ENCRYPTION_KEY` | Key for encrypting wallet private keys | Yes |
 | `POLYGON_RPC_URL` | Polygon RPC endpoint | No |
-| `ALCHEMY_API_KEY` | For real-time deposit detection | No |
+| `ALCHEMY_WEBHOOK_SIGNING_KEY` | For webhook signature verification | No |
+| `ALCHEMY_WEBHOOK_ID` | Webhook ID for address management | No |
+| `ALCHEMY_AUTH_TOKEN` | Auth token for Alchemy API | No |
 | `DATABASE_PATH` | SQLite database location | No |
 | `GAS_SPONSOR_PRIVATE_KEY` | Wallet for sponsoring withdrawal gas | No |
 

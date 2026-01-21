@@ -62,9 +62,12 @@ polybot/
 │   ├── websocket/
 │   │   ├── manager.py               # Connection manager
 │   │   ├── price_subscriber.py      # Price feeds
-│   │   ├── deposit_subscriber.py    # Deposit detection (WebSocket)
 │   │   ├── copy_trade_subscriber.py # Copy trading
 │   │   └── setup.py                 # WebSocket initialization
+│   │
+│   ├── webhook/
+│   │   ├── alchemy_webhook.py       # Deposit detection (Webhooks)
+│   │   └── alchemy_manager.py       # Webhook address management
 │   │
 │   └── security/
 │       └── two_factor.py            # 2FA implementation

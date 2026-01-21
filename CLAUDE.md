@@ -57,9 +57,11 @@ core/                   → External integrations
   websocket/            → Real-time WebSocket subscriptions
     manager.py          → WebSocket connection manager with auto-reconnect
     price_subscriber.py → Polymarket price feeds (stop loss + position sync)
-    deposit_subscriber.py → Alchemy WebSocket for USDC deposits
     copy_trade_subscriber.py → Polymarket user channel for copy trading
     setup.py            → WebSocket service initialization
+  webhook/              → Alchemy webhooks for cost-effective deposit detection
+    alchemy_webhook.py  → Webhook handler for deposit notifications
+    alchemy_manager.py  → API client for managing webhook addresses
 
 database/               → SQLite persistence
   models/               → Dataclasses (User, Wallet, Order, Position, etc.)
@@ -247,5 +249,7 @@ Copy `.env.example` to `.env` and configure:
 - `TELEGRAM_BOT_TOKEN` - From @BotFather
 - `MASTER_ENCRYPTION_KEY` - Generate with `Fernet.generate_key()`
 - `POLYGON_RPC_URL` - Polygon RPC endpoint
-- `ALCHEMY_API_KEY` - For real-time deposit detection via WebSocket (free at alchemy.com)
+- `ALCHEMY_WEBHOOK_SIGNING_KEY` - For webhook signature verification
+- `ALCHEMY_WEBHOOK_ID` - Webhook ID for address management
+- `ALCHEMY_AUTH_TOKEN` - Auth token for Alchemy API
 - `GAS_SPONSOR_PRIVATE_KEY` - Wallet with POL for withdrawal gas fees

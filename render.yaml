@@ -50,10 +50,6 @@ services:
       - key: ALCHEMY_AUTH_TOKEN
         sync: false
 
-      # Disable legacy WebSocket (costs millions of compute units)
-      - key: ALCHEMY_API_KEY
-        value: ""
-
       # News Bot
       - key: NEWS_CHANNEL_IDS
         sync: false

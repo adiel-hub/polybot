@@ -26,11 +26,13 @@ tests/
 │   │   ├── test_encryption.py
 │   │   └── test_generator.py
 │   │
-│   └── test_websocket/  # WebSocket tests
-│       ├── test_deposit_subscriber.py
-│       ├── test_integration.py
-│       ├── test_manager.py
-│       └── test_price_subscriber.py
+│   ├── test_websocket/  # WebSocket tests
+│   │   ├── test_integration.py
+│   │   ├── test_manager.py
+│   │   └── test_price_subscriber.py
+│   │
+│   └── test_webhook/    # Webhook tests (deposit detection)
+│       └── test_alchemy_webhook.py
 │
 ├── test_database/       # Database tests
 │   ├── test_connection.py

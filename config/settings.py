@@ -37,9 +37,8 @@ class Settings(BaseSettings):
         default="wss://ws-live-data.polymarket.com",
         description="Polymarket live data WebSocket URL"
     )
-    alchemy_api_key: str = Field(default="", description="Alchemy API key (deprecated - use webhook instead)")
 
-    # Alchemy Webhook (replaces WebSocket for cost efficiency)
+    # Alchemy Webhook (cost-effective deposit detection)
     alchemy_webhook_signing_key: str = Field(default="", description="Alchemy webhook signing key for verification")
     alchemy_webhook_id: str = Field(default="", description="Alchemy webhook ID for address management")
     alchemy_auth_token: str = Field(default="", description="Alchemy auth token for webhook API")
@@ -94,13 +93,6 @@ class Settings(BaseSettings):
     def db_path(self) -> Path:
         """Return database path as Path object."""
         return Path(self.database_path)
-
-    @property
-    def alchemy_ws_url(self) -> str:
-        """Return Alchemy WebSocket URL for Polygon."""
-        if not self.alchemy_api_key:
-            return ""
-        return f"wss://polygon-mainnet.g.alchemy.com/v2/{self.alchemy_api_key}"
 
 
 # Global settings instance

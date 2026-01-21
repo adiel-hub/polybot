@@ -341,7 +341,6 @@ def pytest_configure(config):
         # Validate required settings
         required_settings = [
             ("POLYGON_RPC_URL", settings.polygon_rpc_url),
-            ("ALCHEMY_API_KEY", settings.alchemy_api_key),
             ("MASTER_ENCRYPTION_KEY", settings.master_encryption_key),
         ]
 
@@ -357,7 +356,6 @@ def pytest_configure(config):
         print("="*80)
         print(f"Database: {settings.database_path}")
         print(f"RPC URL: {settings.polygon_rpc_url[:50]}...")
-        print(f"Alchemy: {'Configured' if settings.alchemy_api_key else 'Not configured'}")
         print(f"Test amounts: Deposit=${settings.test_deposit_amount}, Trade=${settings.test_trade_amount}")
         print("="*80 + "\n")
 
