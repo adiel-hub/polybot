@@ -37,7 +37,13 @@ class Settings(BaseSettings):
         default="wss://ws-live-data.polymarket.com",
         description="Polymarket live data WebSocket URL"
     )
-    alchemy_api_key: str = Field(default="", description="Alchemy API key for Polygon WebSocket")
+    alchemy_api_key: str = Field(default="", description="Alchemy API key (deprecated - use webhook instead)")
+
+    # Alchemy Webhook (replaces WebSocket for cost efficiency)
+    alchemy_webhook_signing_key: str = Field(default="", description="Alchemy webhook signing key for verification")
+    alchemy_webhook_id: str = Field(default="", description="Alchemy webhook ID for address management")
+    alchemy_auth_token: str = Field(default="", description="Alchemy auth token for webhook API")
+    webhook_port: int = Field(default=8080, description="Port for webhook server")
 
     # Rate Limits
     trade_rate_limit: int = Field(default=5, description="Max trades per minute")
