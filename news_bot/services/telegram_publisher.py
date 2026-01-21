@@ -190,7 +190,9 @@ class TelegramPublisherService:
         polymarket_url = ""
         if market.slug:
             # Clean the slug - remove trailing numeric patterns (token IDs)
-            clean_slug = re.sub(r'(-\d+)+$', '', market.slug)
+            # Also strip whitespace/newlines that may be in the API response
+            clean_slug = market.slug.strip().replace('\n', '').replace('\r', '')
+            clean_slug = re.sub(r'(-\d+)+$', '', clean_slug)
             if clean_slug:
                 polymarket_url = f"https://polymarket.com/market/{clean_slug}"
 
