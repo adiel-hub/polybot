@@ -243,13 +243,24 @@ class AlchemyWebhookHandler:
             if not user:
                 return
 
+            # Set up token approvals on first deposit (if not already done)
+            if not wallet.usdc_approved:
+                await self._setup_trading_approvals(wallet)
+
             # Notify user
             if self.bot_send_message:
                 try:
+                    # Add setup message if this was first deposit
+                    if not wallet.usdc_approved:
+                        setup_msg = "🔐 Setting up trading approvals...\n\n"
+                    else:
+                        setup_msg = ""
+
                     message = (
                         f"💰 *Deposit Received!*\n\n"
                         f"💵 Amount: `${amount:.2f}` USDC\n"
                         f"🔗 TX: `{tx_hash[:16]}...`\n\n"
+                        f"{setup_msg}"
                         f"📈 You're ready to trade!"
                     )
 
@@ -264,6 +275,55 @@ class AlchemyWebhookHandler:
 
         except Exception as e:
             logger.error(f"Failed to process deposit notification: {e}")
+
+    async def _setup_trading_approvals(self, wallet) -> None:
+        """
+        Set up USDC token approvals for trading on first deposit.
+
+        This enables the wallet to trade immediately after receiving funds.
+        Uses Polymarket's gasless relayer - no POL needed for gas.
+        """
+        try:
+            logger.info(f"Setting up trading approvals for wallet {wallet.address[:10]}...")
+
+            # Import here to avoid circular dependency
+            from core.wallet import KeyEncryption
+            from core.polymarket.clob_client import PolymarketCLOB
+            from config import settings
+
+            # Decrypt private key
+            encryption = KeyEncryption(settings.master_encryption_key)
+            private_key = encryption.decrypt(
+                wallet.encrypted_private_key,
+                wallet.encryption_salt,
+            )
+
+            # Create CLOB client
+            client = PolymarketCLOB(
+                private_key=private_key,
+                funder_address=wallet.address,
+            )
+
+            # Initialize client (creates API credentials)
+            await client.initialize()
+
+            # Set USDC allowance (unlimited approval via gasless relayer)
+            success = await client.set_allowance()
+
+            if success:
+                # Mark as approved in database
+                wallet_repo = WalletRepository(self.db)
+                await wallet_repo.update(
+                    wallet.id,
+                    usdc_approved=True,
+                )
+                logger.info(f"✅ Trading approvals set for wallet {wallet.address[:10]}...")
+            else:
+                logger.error(f"Failed to set trading approvals for {wallet.address[:10]}...")
+
+        except Exception as e:
+            logger.error(f"Error setting up trading approvals: {e}")
+            # Don't fail the deposit notification if approval fails
 
 
 def create_webhook_app(handler: AlchemyWebhookHandler) -> web.Application:
