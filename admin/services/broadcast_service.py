@@ -23,23 +23,22 @@ class BroadcastService:
         """Get users matching filter criteria."""
         conn = await self.db.get_connection()
         if filter_type == "active":
-            cursor = await conn.execute(
-                "SELECT u.id, u.telegram_id FROM users u WHERE u.is_active = 1"
+            rows = await conn.fetch(
+                "SELECT u.id, u.telegram_id FROM users u WHERE u.is_active = TRUE"
             )
         elif filter_type == "with_balance":
-            cursor = await conn.execute(
+            rows = await conn.fetch(
                 """
                 SELECT u.id, u.telegram_id FROM users u
                 JOIN wallets w ON w.user_id = u.id
-                WHERE u.is_active = 1 AND w.usdc_balance > 0
+                WHERE u.is_active = TRUE AND w.usdc_balance > 0
                 """
             )
         else:  # all
-            cursor = await conn.execute(
+            rows = await conn.fetch(
                 "SELECT id, telegram_id FROM users"
             )
 
-        rows = await cursor.fetchall()
         return [{"id": row[0], "telegram_id": row[1]} for row in rows]
 
     async def broadcast_message(
@@ -117,18 +116,18 @@ class BroadcastService:
         """Count users matching filter criteria."""
         conn = await self.db.get_connection()
         if filter_type == "active":
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM users WHERE is_active = 1"
+            row = await conn.fetchrow(
+                "SELECT COUNT(*) FROM users WHERE is_active = TRUE"
             )
         elif filter_type == "with_balance":
-            cursor = await conn.execute(
+            row = await conn.fetchrow(
                 """
                 SELECT COUNT(*) FROM users u
                 JOIN wallets w ON w.user_id = u.id
-                WHERE u.is_active = 1 AND w.usdc_balance > 0
+                WHERE u.is_active = TRUE AND w.usdc_balance > 0
                 """
             )
         else:  # all
-            cursor = await conn.execute("SELECT COUNT(*) FROM users")
+            row = await conn.fetchrow("SELECT COUNT(*) FROM users")
 
-        return (await cursor.fetchone())[0]
+        return row[0] if row else 0

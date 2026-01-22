@@ -27,33 +27,31 @@ class AnalyticsService:
         conn = await self.db.get_connection()
 
         # Total users
-        cursor = await conn.execute("SELECT COUNT(*) FROM users")
-        row = await cursor.fetchone()
+        row = await conn.fetchrow("SELECT COUNT(*) FROM users")
+        row = row
         total_users = row[0] if row else 0
 
         # New users in period
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             f"""
             SELECT COUNT(*) FROM users
-            WHERE created_at >= datetime('now', '-{days} days')
+            WHERE created_at >= NOW() - INTERVAL '{days} days'
             """
         )
-        row = await cursor.fetchone()
         new_users = row[0] if row else 0
 
         # Daily breakdown
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             f"""
             SELECT
-                DATE(created_at) as date,
+                created_at::DATE as date,
                 COUNT(*) as count
             FROM users
-            WHERE created_at >= datetime('now', '-{days} days')
-            GROUP BY DATE(created_at)
+            WHERE created_at >= NOW() - INTERVAL '{days} days'
+            GROUP BY created_at::DATE
             ORDER BY date DESC
             """
         )
-        rows = await cursor.fetchall()
 
         daily_growth = [{"date": row[0], "count": row[1]} for row in rows]
 
@@ -69,7 +67,7 @@ class AnalyticsService:
         """Get active vs inactive user statistics."""
         conn = await self.db.get_connection()
 
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             """
             SELECT
                 COUNT(*) as total,
@@ -78,7 +76,6 @@ class AnalyticsService:
             FROM users
             """
         )
-        row = await cursor.fetchone()
 
         total = row[0] if row else 0
         active = row[1] if row else 0
@@ -97,7 +94,7 @@ class AnalyticsService:
         """Get referral conversion statistics."""
         conn = await self.db.get_connection()
 
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             SELECT
                 COUNT(*) as total,
@@ -105,7 +102,6 @@ class AnalyticsService:
             FROM users
             """
         )
-        row = await cursor.fetchone()
 
         total = row[0] if row else 0
         with_referrer = row[1] if row and row[1] else 0
@@ -126,10 +122,10 @@ class AnalyticsService:
         conn = await self.db.get_connection()
 
         # Build query with optional time filter
-        time_filter = f"WHERE created_at >= datetime('now', '-{days} days')" if days else ""
+        time_filter = f"WHERE created_at >= NOW() - INTERVAL '{days} days'" if days else ""
 
         # Total volume
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             f"""
             SELECT
                 SUM(size) as total_volume,
@@ -140,7 +136,6 @@ class AnalyticsService:
             {time_filter}
             """
         )
-        row = await cursor.fetchone()
 
         total_volume = row[0] if row and row[0] else 0.0
         total_orders = row[1] if row else 0
@@ -159,10 +154,9 @@ class AnalyticsService:
         """Get average order size."""
         conn = await self.db.get_connection()
 
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             "SELECT AVG(size) FROM orders WHERE status = 'FILLED'"
         )
-        row = await cursor.fetchone()
 
         return row[0] if row and row[0] else 0.0
 
@@ -170,7 +164,7 @@ class AnalyticsService:
         """Get order fill/completion rate."""
         conn = await self.db.get_connection()
 
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             SELECT
                 COUNT(*) as total,
@@ -180,7 +174,6 @@ class AnalyticsService:
             FROM orders
             """
         )
-        row = await cursor.fetchone()
 
         total = row[0] if row else 0
         filled = row[1] if row else 0
@@ -201,7 +194,7 @@ class AnalyticsService:
         """Get volume breakdown by YES/NO."""
         conn = await self.db.get_connection()
 
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             SELECT
                 outcome,
@@ -212,7 +205,6 @@ class AnalyticsService:
             GROUP BY outcome
             """
         )
-        rows = await cursor.fetchall()
 
         yes_volume = 0.0
         no_volume = 0.0
@@ -244,10 +236,9 @@ class AnalyticsService:
         """Get total Assets Under Management (sum of all wallet balances)."""
         conn = await self.db.get_connection()
 
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             "SELECT SUM(usdc_balance) FROM wallets"
         )
-        row = await cursor.fetchone()
 
         return row[0] if row and row[0] else 0.0
 
@@ -256,23 +247,21 @@ class AnalyticsService:
         conn = await self.db.get_connection()
 
         # Total confirmed deposits
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             SELECT SUM(amount) FROM deposits
             WHERE status = 'CONFIRMED'
             """
         )
-        row = await cursor.fetchone()
         total_deposits = row[0] if row and row[0] else 0.0
 
         # Total confirmed withdrawals
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             SELECT SUM(amount) FROM withdrawals
             WHERE status = 'CONFIRMED'
             """
         )
-        row = await cursor.fetchone()
         total_withdrawals = row[0] if row and row[0] else 0.0
 
         net_flow = total_deposits - total_withdrawals
@@ -288,36 +277,36 @@ class AnalyticsService:
         conn = await self.db.get_connection()
 
         # Daily deposits
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             f"""
             SELECT
-                DATE(detected_at) as date,
+                detected_at::DATE as date,
                 SUM(amount) as amount,
                 COUNT(*) as count
             FROM deposits
             WHERE status = 'CONFIRMED'
-            AND detected_at >= datetime('now', '-{days} days')
-            GROUP BY DATE(detected_at)
+            AND detected_at >= NOW() - INTERVAL '{days} days'
+            GROUP BY detected_at::DATE
             ORDER BY date DESC
             """
         )
-        deposits = [{"date": row[0], "amount": row[1], "count": row[2]} for row in await cursor.fetchall()]
+        deposits = [{"date": row[0], "amount": row[1], "count": row[2]} for row in rows]
 
         # Daily withdrawals
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             f"""
             SELECT
-                DATE(created_at) as date,
+                created_at::DATE as date,
                 SUM(amount) as amount,
                 COUNT(*) as count
             FROM withdrawals
             WHERE status = 'CONFIRMED'
-            AND created_at >= datetime('now', '-{days} days')
-            GROUP BY DATE(created_at)
+            AND created_at >= NOW() - INTERVAL '{days} days'
+            GROUP BY created_at::DATE
             ORDER BY date DESC
             """
         )
-        withdrawals = [{"date": row[0], "amount": row[1], "count": row[2]} for row in await cursor.fetchall()]
+        withdrawals = [{"date": row[0], "amount": row[1], "count": row[2]} for row in rows]
 
         return {
             "deposits": deposits,
@@ -349,17 +338,15 @@ class AnalyticsService:
         conn = await self.db.get_connection()
 
         # Total realized P&L
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             "SELECT SUM(realized_pnl) FROM positions WHERE realized_pnl IS NOT NULL"
         )
-        row = await cursor.fetchone()
         realized_pnl = row[0] if row and row[0] else 0.0
 
         # Total unrealized P&L (current open positions)
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             "SELECT SUM(unrealized_pnl) FROM positions WHERE size > 0"
         )
-        row = await cursor.fetchone()
         unrealized_pnl = row[0] if row and row[0] else 0.0
 
         total_pnl = realized_pnl + unrealized_pnl
@@ -374,7 +361,7 @@ class AnalyticsService:
         """Get win rate statistics."""
         conn = await self.db.get_connection()
 
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             SELECT
                 COUNT(*) as total,
@@ -385,7 +372,6 @@ class AnalyticsService:
             WHERE realized_pnl IS NOT NULL
             """
         )
-        row = await cursor.fetchone()
 
         total = row[0] if row else 0
         wins = row[1] if row else 0
@@ -407,7 +393,7 @@ class AnalyticsService:
         conn = await self.db.get_connection()
 
         # Top performers
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             f"""
             SELECT
                 p.user_id,
@@ -431,11 +417,11 @@ class AnalyticsService:
                 "total_pnl": row[3],
                 "trade_count": row[4],
             }
-            for row in await cursor.fetchall()
+            for row in rows
         ]
 
         # Bottom performers
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             f"""
             SELECT
                 p.user_id,
@@ -459,7 +445,7 @@ class AnalyticsService:
                 "total_pnl": row[3],
                 "trade_count": row[4],
             }
-            for row in await cursor.fetchall()
+            for row in rows
         ]
 
         return {

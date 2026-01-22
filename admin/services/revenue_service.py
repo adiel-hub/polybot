@@ -19,14 +19,14 @@ class RevenueService:
         conn = await self.db.get_connection()
 
         # Total commissions from referral_commissions table
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             "SELECT SUM(commission_amount) as total FROM referral_commissions"
         )
-        row = await cursor.fetchone()
+        row = row
         total_commissions = row[0] if row and row[0] else 0.0
 
         # Pending and claimed from users table
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             SELECT
                 SUM(commission_balance) as pending,
@@ -34,7 +34,6 @@ class RevenueService:
             FROM users
             """
         )
-        row = await cursor.fetchone()
         pending = row[0] if row and row[0] else 0.0
         claimed = row[1] if row and row[1] else 0.0
 
@@ -48,7 +47,7 @@ class RevenueService:
         """Get commission breakdown by tier (1, 2, 3)."""
         conn = await self.db.get_connection()
 
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             SELECT
                 tier,
@@ -59,7 +58,6 @@ class RevenueService:
             ORDER BY tier
             """
         )
-        rows = await cursor.fetchall()
 
         tiers = []
         for row in rows:
@@ -75,19 +73,18 @@ class RevenueService:
         """Get daily revenue for last N days."""
         conn = await self.db.get_connection()
 
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             f"""
             SELECT
-                DATE(created_at) as date,
+                created_at::DATE as date,
                 SUM(commission_amount) as revenue,
                 COUNT(*) as transactions
             FROM referral_commissions
-            WHERE created_at >= datetime('now', '-{days} days')
-            GROUP BY DATE(created_at)
+            WHERE created_at >= NOW() - INTERVAL '{days} days'
+            GROUP BY created_at::DATE
             ORDER BY date DESC
             """
         )
-        rows = await cursor.fetchall()
 
         daily_revenue = []
         for row in rows:
@@ -103,7 +100,7 @@ class RevenueService:
         """Get top earning referrers."""
         conn = await self.db.get_connection()
 
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             f"""
             SELECT
                 rc.referrer_id,
@@ -119,7 +116,6 @@ class RevenueService:
             LIMIT {limit}
             """
         )
-        rows = await cursor.fetchall()
 
         top_earners = []
         for row in rows:
@@ -139,33 +135,31 @@ class RevenueService:
         conn = await self.db.get_connection()
 
         # Last 30 days average
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             SELECT AVG(daily_revenue) as avg_daily
             FROM (
-                SELECT DATE(created_at) as date, SUM(commission_amount) as daily_revenue
+                SELECT created_at::DATE as date, SUM(commission_amount) as daily_revenue
                 FROM referral_commissions
-                WHERE created_at >= datetime('now', '-30 days')
-                GROUP BY DATE(created_at)
+                WHERE created_at >= NOW() - INTERVAL '30 days'
+                GROUP BY created_at::DATE
             )
             """
         )
-        row = await cursor.fetchone()
         avg_daily_30d = row[0] if row and row[0] else 0.0
 
         # Last 7 days average
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             SELECT AVG(daily_revenue) as avg_daily
             FROM (
-                SELECT DATE(created_at) as date, SUM(commission_amount) as daily_revenue
+                SELECT created_at::DATE as date, SUM(commission_amount) as daily_revenue
                 FROM referral_commissions
-                WHERE created_at >= datetime('now', '-7 days')
-                GROUP BY DATE(created_at)
+                WHERE created_at >= NOW() - INTERVAL '7 days'
+                GROUP BY created_at::DATE
             )
             """
         )
-        row = await cursor.fetchone()
         avg_daily_7d = row[0] if row and row[0] else 0.0
 
         # Calculate growth
@@ -189,18 +183,16 @@ class RevenueService:
         conn = await self.db.get_connection()
 
         # Average commission amount
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             "SELECT AVG(commission_amount), COUNT(*) FROM referral_commissions"
         )
-        row = await cursor.fetchone()
         avg_commission = row[0] if row and row[0] else 0.0
         total_commissions = row[1] if row else 0
 
         # Total orders (to calculate commission conversion)
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             "SELECT COUNT(*) FROM orders WHERE status = 'FILLED'"
         )
-        row = await cursor.fetchone()
         total_orders = row[0] if row else 0
 
         # Commission conversion rate
