@@ -75,6 +75,16 @@ class Market:
         markets_list = data.get("markets", [])
         outcomes_count = len(markets_list) if markets_list else 1
 
+        # Sanitize slug to remove any newlines or control characters
+        raw_slug = market.get("slug", data.get("slug"))
+        if raw_slug:
+            # Remove all whitespace and control characters
+            import re
+            clean_slug = raw_slug.strip().replace('\n', '').replace('\r', '').replace('\t', '')
+            clean_slug = re.sub(r'\s+', '', clean_slug)
+        else:
+            clean_slug = None
+
         return cls(
             condition_id=market.get("conditionId", data.get("id", "")),
             question=market.get("question", data.get("title", "")),
@@ -90,7 +100,7 @@ class Market:
             liquidity=float(market.get("liquidity", 0) or 0),
             end_date=market.get("endDate", data.get("endDate")),
             is_active=market.get("active", True) and not market.get("closed", False),
-            slug=market.get("slug", data.get("slug")),
+            slug=clean_slug,
             event_id=data.get("id"),
             event_title=data.get("title"),
             outcomes_count=outcomes_count,

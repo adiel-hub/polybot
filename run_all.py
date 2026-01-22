@@ -470,7 +470,7 @@ async def run_webhook_server():
 
             app = web.Application()
 
-        # Add health check endpoint (always available)
+        # Add health check endpoint (if not already added by create_webhook_app)
         async def health_check(request):
             return web.json_response({
                 "status": "healthy",
@@ -478,8 +478,12 @@ async def run_webhook_server():
                 "webhook_enabled": alchemy_configured,
             })
 
-        app.router.add_get("/health", health_check)
-        app.router.add_get("/", health_check)  # Root path for Render health checks
+        # Only add health check if not already registered (to avoid duplicate route error)
+        if not alchemy_configured:
+            app.router.add_get("/health", health_check)
+
+        # Always add root path health check for Render
+        app.router.add_get("/", health_check)
 
         runner = web.AppRunner(app)
         await runner.setup()
