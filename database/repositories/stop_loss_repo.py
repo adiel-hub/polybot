@@ -59,7 +59,7 @@ class StopLossRepository:
             row = await conn.fetchrow(
                 """
                 SELECT * FROM stop_loss_orders
-                WHERE position_id = $1 AND is_active = TRUE
+                WHERE position_id = $1 AND is_active = 1
                 """,
                 position_id,
             )
@@ -76,7 +76,7 @@ class StopLossRepository:
             rows = await conn.fetch(
                 """
                 SELECT * FROM stop_loss_orders
-                WHERE user_id = $1 AND is_active = TRUE
+                WHERE user_id = $1 AND is_active = 1
                 ORDER BY created_at DESC
                 """,
                 user_id,
@@ -92,7 +92,7 @@ class StopLossRepository:
             rows = await conn.fetch(
                 """
                 SELECT * FROM stop_loss_orders
-                WHERE is_active = TRUE
+                WHERE is_active = 1
                 ORDER BY created_at ASC
                 """
             )
@@ -105,7 +105,7 @@ class StopLossRepository:
         conn = await self.db.get_connection()
         try:
             await conn.execute(
-                "UPDATE stop_loss_orders SET is_active = FALSE WHERE id = $1",
+                "UPDATE stop_loss_orders SET is_active = 0 WHERE id = $1",
                 stop_loss_id,
             )
         finally:
@@ -122,7 +122,7 @@ class StopLossRepository:
             await conn.execute(
                 """
                 UPDATE stop_loss_orders
-                SET is_active = FALSE,
+                SET is_active = 0,
                     triggered_at = $1,
                     resulting_order_id = $2
                 WHERE id = $3

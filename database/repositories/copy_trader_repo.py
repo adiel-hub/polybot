@@ -80,7 +80,7 @@ class CopyTraderRepository:
             rows = await conn.fetch(
                 """
                 SELECT * FROM copy_traders
-                WHERE user_id = $1 AND is_active = TRUE
+                WHERE user_id = $1 AND is_active = 1
                 ORDER BY created_at DESC
                 """,
                 user_id,
@@ -96,7 +96,7 @@ class CopyTraderRepository:
             rows = await conn.fetch(
                 """
                 SELECT * FROM copy_traders
-                WHERE is_active = TRUE
+                WHERE is_active = 1
                 """
             )
             return [CopyTrader.from_row(row) for row in rows]
@@ -110,7 +110,7 @@ class CopyTraderRepository:
             rows = await conn.fetch(
                 """
                 SELECT * FROM copy_traders
-                WHERE LOWER(trader_address) = LOWER($1) AND is_active = TRUE
+                WHERE LOWER(trader_address) = LOWER($1) AND is_active = 1
                 """,
                 trader_address,
             )
@@ -138,7 +138,7 @@ class CopyTraderRepository:
         conn = await self.db.get_connection()
         try:
             await conn.execute(
-                "UPDATE copy_traders SET is_active = FALSE WHERE id = $1",
+                "UPDATE copy_traders SET is_active = 0 WHERE id = $1",
                 copy_trader_id,
             )
         finally:
@@ -149,7 +149,7 @@ class CopyTraderRepository:
         conn = await self.db.get_connection()
         try:
             await conn.execute(
-                "UPDATE copy_traders SET is_active = TRUE WHERE id = $1",
+                "UPDATE copy_traders SET is_active = 1 WHERE id = $1",
                 copy_trader_id,
             )
         finally:
@@ -184,7 +184,7 @@ class CopyTraderRepository:
                 """
                 SELECT DISTINCT trader_address
                 FROM copy_traders
-                WHERE is_active = TRUE
+                WHERE is_active = 1
                 """
             )
             return [row["trader_address"] for row in rows]

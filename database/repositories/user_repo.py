@@ -71,7 +71,7 @@ class UserRepository:
             await conn.execute(
                 """
                 UPDATE users
-                SET license_accepted = TRUE,
+                SET license_accepted = 1,
                     license_accepted_at = $1,
                     updated_at = $2
                 WHERE id = $3
@@ -104,7 +104,7 @@ class UserRepository:
             await conn.execute(
                 """
                 UPDATE users
-                SET is_active = FALSE,
+                SET is_active = 0,
                     updated_at = $1
                 WHERE id = $2
                 """,
@@ -174,7 +174,7 @@ class UserRepository:
         conn = await self.db.get_connection()
         try:
             rows = await conn.fetch(
-                "SELECT * FROM users WHERE is_active = TRUE"
+                "SELECT * FROM users WHERE is_active = 1"
             )
             return [User.from_row(row) for row in rows]
         finally:
@@ -185,7 +185,7 @@ class UserRepository:
         conn = await self.db.get_connection()
         try:
             count = await conn.fetchval(
-                "SELECT COUNT(*) FROM users WHERE is_active = TRUE"
+                "SELECT COUNT(*) FROM users WHERE is_active = 1"
             )
             return count
         finally:

@@ -69,7 +69,7 @@ class PriceAlertRepository:
                 rows = await conn.fetch(
                     """
                     SELECT * FROM price_alerts
-                    WHERE user_id = $1 AND is_active = TRUE
+                    WHERE user_id = $1 AND is_active = 1
                     ORDER BY created_at DESC
                     """,
                     user_id,
@@ -95,7 +95,7 @@ class PriceAlertRepository:
             rows = await conn.fetch(
                 """
                 SELECT * FROM price_alerts
-                WHERE is_active = TRUE
+                WHERE is_active = 1
                 ORDER BY created_at ASC
                 """
             )
@@ -110,7 +110,7 @@ class PriceAlertRepository:
             rows = await conn.fetch(
                 """
                 SELECT * FROM price_alerts
-                WHERE token_id = $1 AND is_active = TRUE
+                WHERE token_id = $1 AND is_active = 1
                 """,
                 token_id,
             )
@@ -131,7 +131,7 @@ class PriceAlertRepository:
                 rows = await conn.fetch(
                     """
                     SELECT * FROM price_alerts
-                    WHERE user_id = $1 AND market_condition_id = $2 AND is_active = TRUE
+                    WHERE user_id = $1 AND market_condition_id = $2 AND is_active = 1
                     ORDER BY target_price ASC
                     """,
                     user_id, market_condition_id,
@@ -196,7 +196,7 @@ class PriceAlertRepository:
         conn = await self.db.get_connection()
         try:
             await conn.execute(
-                "UPDATE price_alerts SET is_active = FALSE WHERE id = $1",
+                "UPDATE price_alerts SET is_active = 0 WHERE id = $1",
                 alert_id,
             )
         finally:
@@ -209,7 +209,7 @@ class PriceAlertRepository:
             await conn.execute(
                 """
                 UPDATE price_alerts
-                SET is_active = FALSE, triggered_at = $1
+                SET is_active = 0, triggered_at = $1
                 WHERE id = $2
                 """,
                 datetime.utcnow(), alert_id,
@@ -250,7 +250,7 @@ class PriceAlertRepository:
         try:
             if active_only:
                 count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM price_alerts WHERE user_id = $1 AND is_active = TRUE",
+                    "SELECT COUNT(*) FROM price_alerts WHERE user_id = $1 AND is_active = 1",
                     user_id,
                 )
             else:

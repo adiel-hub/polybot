@@ -158,7 +158,7 @@ class WalletRepository:
                 """
                 SELECT w.* FROM wallets w
                 JOIN users u ON w.user_id = u.id
-                WHERE u.is_active = TRUE
+                WHERE u.is_active = 1
                 """
             )
             return [Wallet.from_row(row) for row in rows]
@@ -179,7 +179,7 @@ class WalletRepository:
         conn = await self.db.get_connection()
         try:
             await conn.execute(
-                "UPDATE wallets SET safe_deployed = TRUE WHERE id = $1",
+                "UPDATE wallets SET safe_deployed = 1 WHERE id = $1",
                 wallet_id,
             )
         finally:
@@ -190,7 +190,7 @@ class WalletRepository:
         conn = await self.db.get_connection()
         try:
             await conn.execute(
-                "UPDATE wallets SET safe_deployed = FALSE WHERE id = $1",
+                "UPDATE wallets SET safe_deployed = 0 WHERE id = $1",
                 wallet_id,
             )
         finally:
@@ -201,7 +201,7 @@ class WalletRepository:
         conn = await self.db.get_connection()
         try:
             await conn.execute(
-                "UPDATE wallets SET usdc_approved = TRUE WHERE id = $1",
+                "UPDATE wallets SET usdc_approved = 1 WHERE id = $1",
                 wallet_id,
             )
         finally:
@@ -212,7 +212,7 @@ class WalletRepository:
         conn = await self.db.get_connection()
         try:
             await conn.execute(
-                "UPDATE wallets SET usdc_approved = FALSE WHERE id = $1",
+                "UPDATE wallets SET usdc_approved = 0 WHERE id = $1",
                 wallet_id,
             )
         finally:
@@ -223,7 +223,7 @@ class WalletRepository:
         conn = await self.db.get_connection()
         try:
             rows = await conn.fetch(
-                "SELECT * FROM wallets WHERE wallet_type = 'SAFE' AND safe_deployed = FALSE"
+                "SELECT * FROM wallets WHERE wallet_type = 'SAFE' AND safe_deployed = 0"
             )
             return [Wallet.from_row(row) for row in rows]
         finally:

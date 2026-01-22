@@ -187,7 +187,7 @@ class ResolutionSubscriber:
             conn = await self.db.get_connection()
             rows = await conn.fetch(
                 """
-                SELECT condition_id FROM resolved_markets WHERE processed = TRUE
+                SELECT condition_id FROM resolved_markets WHERE processed = 1
                 """
             )
             return {row["condition_id"] for row in rows}
