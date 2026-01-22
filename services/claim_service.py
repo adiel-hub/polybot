@@ -100,16 +100,15 @@ class ClaimService:
     ) -> List[Dict[str, Any]]:
         """Get all positions for a market."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             """
             SELECT p.*, w.address as wallet_address
             FROM positions p
             JOIN wallets w ON p.user_id = w.user_id
-            WHERE p.market_condition_id = ? AND p.size > 0
+            WHERE p.market_condition_id = $1 AND p.size > 0
             """,
-            (condition_id,),
+            condition_id,
         )
-        rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
     async def _close_losing_position(

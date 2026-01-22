@@ -355,14 +355,13 @@ class CommissionService:
     async def get_pending_commissions(self) -> list:
         """Get all pending commission transfers for retry."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             """
             SELECT * FROM operator_commissions
             WHERE status = 'PENDING'
             ORDER BY created_at ASC
             """
         )
-        rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
     async def get_total_collected(
@@ -393,16 +392,18 @@ class CommissionService:
             WHERE 1=1
         """
         params = []
+        param_num = 1
 
         if start_date:
-            query += " AND created_at >= ?"
+            query += f" AND created_at >= ${param_num}"
             params.append(start_date)
+            param_num += 1
         if end_date:
-            query += " AND created_at <= ?"
+            query += f" AND created_at <= ${param_num}"
             params.append(end_date)
+            param_num += 1
 
-        cursor = await conn.execute(query, params)
-        row = await cursor.fetchone()
+        row = await conn.fetchrow(query, *params)
 
         return {
             "total_amount": row["total_amount"] or 0.0,
@@ -418,14 +419,13 @@ class CommissionService:
     ) -> list:
         """Get commission history for a specific user."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             """
             SELECT * FROM operator_commissions
-            WHERE user_id = ?
+            WHERE user_id = $1
             ORDER BY created_at DESC
-            LIMIT ?
+            LIMIT $2
             """,
-            (user_id, limit),
+            user_id, limit,
         )
-        rows = await cursor.fetchall()
         return [dict(row) for row in rows]

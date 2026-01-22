@@ -28,39 +28,36 @@ class PostedMarketRepository:
     ) -> PostedMarket:
         """Create a new posted market record."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             """
             INSERT INTO posted_markets (
                 condition_id, event_id, question, category,
                 article_title, telegram_message_id, market_created_at,
                 article_tokens_used, research_sources
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id
             """,
-            (
-                condition_id,
-                event_id,
-                question,
-                category,
-                article_title,
-                telegram_message_id,
-                market_created_at.isoformat() if market_created_at else None,
-                article_tokens_used,
-                json.dumps(research_sources) if research_sources else None,
-            ),
+            condition_id,
+            event_id,
+            question,
+            category,
+            article_title,
+            telegram_message_id,
+            market_created_at,
+            article_tokens_used,
+            json.dumps(research_sources) if research_sources else None,
         )
-        await conn.commit()
 
-        return await self.get_by_id(cursor.lastrowid)
+        return await self.get_by_id(row["id"])
 
     async def get_by_id(self, posted_id: int) -> Optional[PostedMarket]:
         """Get posted market by ID."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
-            "SELECT * FROM posted_markets WHERE id = ?",
-            (posted_id,),
+        row = await conn.fetchrow(
+            "SELECT * FROM posted_markets WHERE id = $1",
+            posted_id,
         )
-        row = await cursor.fetchone()
         if row:
             return PostedMarket.from_row(row)
         return None
@@ -68,11 +65,10 @@ class PostedMarketRepository:
     async def get_by_condition_id(self, condition_id: str) -> Optional[PostedMarket]:
         """Get posted market by Polymarket condition ID."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
-            "SELECT * FROM posted_markets WHERE condition_id = ?",
-            (condition_id,),
+        row = await conn.fetchrow(
+            "SELECT * FROM posted_markets WHERE condition_id = $1",
+            condition_id,
         )
-        row = await cursor.fetchone()
         if row:
             return PostedMarket.from_row(row)
         return None
@@ -80,46 +76,42 @@ class PostedMarketRepository:
     async def exists(self, condition_id: str) -> bool:
         """Check if a market has already been posted."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
-            "SELECT 1 FROM posted_markets WHERE condition_id = ?",
-            (condition_id,),
+        row = await conn.fetchrow(
+            "SELECT 1 FROM posted_markets WHERE condition_id = $1",
+            condition_id,
         )
-        row = await cursor.fetchone()
         return row is not None
 
     async def get_recent(self, limit: int = 20) -> List[PostedMarket]:
         """Get recently posted markets."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             """
             SELECT * FROM posted_markets
             ORDER BY posted_at DESC
-            LIMIT ?
+            LIMIT $1
             """,
-            (limit,),
+            limit,
         )
-        rows = await cursor.fetchall()
         return [PostedMarket.from_row(row) for row in rows]
 
     async def count_total(self) -> int:
         """Count total posted markets."""
         conn = await self.db.get_connection()
-        cursor = await conn.execute(
+        row = await conn.fetchrow(
             "SELECT COUNT(*) as count FROM posted_markets"
         )
-        row = await cursor.fetchone()
         return row["count"] if row else 0
 
     async def count_today(self) -> int:
         """Count markets posted today."""
         conn = await self.db.get_connection()
-        today = datetime.now().date().isoformat()
-        cursor = await conn.execute(
+        today = datetime.now().date()
+        row = await conn.fetchrow(
             """
             SELECT COUNT(*) as count FROM posted_markets
-            WHERE date(posted_at) = ?
+            WHERE date(posted_at) = $1
             """,
-            (today,),
+            today,
         )
-        row = await cursor.fetchone()
         return row["count"] if row else 0

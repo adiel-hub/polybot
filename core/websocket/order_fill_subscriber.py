@@ -63,7 +63,7 @@ class OrderFillSubscriber:
             conn = await self.db.get_connection()
 
             # Get all open/pending orders that haven't been commission-processed
-            cursor = await conn.execute(
+            rows = await conn.fetch(
                 """
                 SELECT o.*, w.address as wallet_address, w.encrypted_private_key, w.encryption_salt
                 FROM orders o
@@ -74,7 +74,6 @@ class OrderFillSubscriber:
                 AND o.id NOT IN (SELECT order_id FROM operator_commissions)
                 """
             )
-            rows = await cursor.fetchall()
 
             self._monitored_orders.clear()
 
@@ -93,16 +92,15 @@ class OrderFillSubscriber:
         """Add a new limit order to monitoring."""
         try:
             conn = await self.db.get_connection()
-            cursor = await conn.execute(
+            row = await conn.fetchrow(
                 """
                 SELECT o.*, w.address as wallet_address, w.encrypted_private_key, w.encryption_salt
                 FROM orders o
                 JOIN wallets w ON w.user_id = o.user_id
-                WHERE o.id = ?
+                WHERE o.id = $1
                 """,
-                (order_id,)
+                order_id,
             )
-            row = await cursor.fetchone()
 
             if row:
                 order_data = dict(row)
@@ -294,11 +292,10 @@ class OrderFillSubscriber:
         try:
             # Get user's Telegram ID
             conn = await self.db.get_connection()
-            cursor = await conn.execute(
-                "SELECT telegram_id FROM users WHERE id = ?",
-                (user_id,)
+            row = await conn.fetchrow(
+                "SELECT telegram_id FROM users WHERE id = $1",
+                user_id,
             )
-            row = await cursor.fetchone()
 
             if not row:
                 return

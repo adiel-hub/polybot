@@ -84,14 +84,13 @@ class ResolutionSubscriber:
         """Refresh list of markets to monitor from active positions."""
         try:
             conn = await self.db.get_connection()
-            cursor = await conn.execute(
+            rows = await conn.fetch(
                 """
                 SELECT DISTINCT market_condition_id
                 FROM positions
                 WHERE size > 0
                 """
             )
-            rows = await cursor.fetchall()
             self._monitored_markets = {row["market_condition_id"] for row in rows}
             logger.debug(f"Monitoring {len(self._monitored_markets)} markets for resolution")
         except Exception as e:
@@ -186,12 +185,11 @@ class ResolutionSubscriber:
         """Get set of already-processed market condition IDs."""
         try:
             conn = await self.db.get_connection()
-            cursor = await conn.execute(
+            rows = await conn.fetch(
                 """
-                SELECT condition_id FROM resolved_markets WHERE processed = 1
+                SELECT condition_id FROM resolved_markets WHERE processed = TRUE
                 """
             )
-            rows = await cursor.fetchall()
             return {row["condition_id"] for row in rows}
         except Exception as e:
             logger.error(f"Failed to get processed markets: {e}")

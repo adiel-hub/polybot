@@ -112,11 +112,10 @@ class PriceSubscriber:
             position_repo = PositionRepository(self.db)
             # Get all positions for this token and update them
             conn = await self.db.get_connection()
-            cursor = await conn.execute(
-                "SELECT id FROM positions WHERE token_id = ? AND size > 0",
-                (token_id,),
+            rows = await conn.fetch(
+                "SELECT id FROM positions WHERE token_id = $1 AND size > 0",
+                token_id,
             )
-            rows = await cursor.fetchall()
 
             for row in rows:
                 await position_repo.update_current_price(row["id"], price)
@@ -292,10 +291,9 @@ class PriceSubscriber:
 
             # Get all positions with size > 0 for price updates
             conn = await self.db.get_connection()
-            cursor = await conn.execute(
+            rows = await conn.fetch(
                 "SELECT DISTINCT token_id FROM positions WHERE size > 0"
             )
-            rows = await cursor.fetchall()
 
             for row in rows:
                 token_ids.add(row["token_id"])
