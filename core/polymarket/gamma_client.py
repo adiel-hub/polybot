@@ -1,6 +1,7 @@
 """Polymarket Gamma API client for market data."""
 
 import logging
+import re
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
@@ -79,7 +80,6 @@ class Market:
         raw_slug = market.get("slug", data.get("slug"))
         if raw_slug:
             # Remove all whitespace and control characters
-            import re
             clean_slug = raw_slug.strip().replace('\n', '').replace('\r', '').replace('\t', '')
             clean_slug = re.sub(r'\s+', '', clean_slug)
         else:
