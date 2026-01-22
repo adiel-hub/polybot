@@ -24,14 +24,14 @@ class BroadcastService:
         conn = await self.db.get_connection()
         if filter_type == "active":
             rows = await conn.fetch(
-                "SELECT u.id, u.telegram_id FROM users u WHERE u.is_active = TRUE"
+                "SELECT u.id, u.telegram_id FROM users u WHERE u.is_active = 1"
             )
         elif filter_type == "with_balance":
             rows = await conn.fetch(
                 """
                 SELECT u.id, u.telegram_id FROM users u
                 JOIN wallets w ON w.user_id = u.id
-                WHERE u.is_active = TRUE AND w.usdc_balance > 0
+                WHERE u.is_active = 1 AND w.usdc_balance > 0
                 """
             )
         else:  # all
@@ -117,14 +117,14 @@ class BroadcastService:
         conn = await self.db.get_connection()
         if filter_type == "active":
             row = await conn.fetchrow(
-                "SELECT COUNT(*) FROM users WHERE is_active = TRUE"
+                "SELECT COUNT(*) FROM users WHERE is_active = 1"
             )
         elif filter_type == "with_balance":
             row = await conn.fetchrow(
                 """
                 SELECT COUNT(*) FROM users u
                 JOIN wallets w ON w.user_id = u.id
-                WHERE u.is_active = TRUE AND w.usdc_balance > 0
+                WHERE u.is_active = 1 AND w.usdc_balance > 0
                 """
             )
         else:  # all

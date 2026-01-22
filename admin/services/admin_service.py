@@ -28,7 +28,7 @@ class AdminService:
         conn = await self.db.get_connection()
         query = "SELECT * FROM users"
         if active_only:
-            query += " WHERE is_active = TRUE"
+            query += " WHERE is_active = 1"
         query += " ORDER BY created_at DESC LIMIT $1 OFFSET $2"
 
         rows = await conn.fetch(query, (limit, offset))
@@ -40,7 +40,7 @@ class AdminService:
         conn = await self.db.get_connection()
         query = "SELECT COUNT(*) FROM users"
         if active_only:
-            query += " WHERE is_active = TRUE"
+            query += " WHERE is_active = 1"
         row = await conn.fetchrow(query)
         return row[0] if row else 0
 
@@ -72,7 +72,7 @@ class AdminService:
         """Suspend a user."""
         conn = await self.db.get_connection()
         await conn.execute(
-            "UPDATE users SET is_active = FALSE WHERE id = $1", (user_id,)
+            "UPDATE users SET is_active = 0 WHERE id = $1", (user_id,)
         )
         await conn.commit()
         return True
@@ -81,7 +81,7 @@ class AdminService:
         """Activate a user."""
         conn = await self.db.get_connection()
         await conn.execute(
-            "UPDATE users SET is_active = TRUE WHERE id = $1", (user_id,)
+            "UPDATE users SET is_active = 1 WHERE id = $1", (user_id,)
         )
         await conn.commit()
         return True
@@ -252,7 +252,7 @@ class AdminService:
         conn = await self.db.get_connection()
         query = "SELECT * FROM stop_loss_orders"
         if active_only:
-            query += " WHERE is_active = TRUE"
+            query += " WHERE is_active = 1"
         query += " ORDER BY created_at DESC LIMIT $1 OFFSET $2"
 
         rows = await conn.fetch(query, (limit, offset))
@@ -263,7 +263,7 @@ class AdminService:
         conn = await self.db.get_connection()
         query = "SELECT COUNT(*) FROM stop_loss_orders"
         if active_only:
-            query += " WHERE is_active = TRUE"
+            query += " WHERE is_active = 1"
         rows = await conn.fetch(query)
         return row[0] if row else 0
 
@@ -271,7 +271,7 @@ class AdminService:
         """Deactivate a stop loss."""
         conn = await self.db.get_connection()
         await conn.execute(
-            "UPDATE stop_loss_orders SET is_active = FALSE WHERE id = $1", (stop_loss_id,)
+            "UPDATE stop_loss_orders SET is_active = 0 WHERE id = $1", (stop_loss_id,)
         )
         await conn.commit()
         return True
@@ -285,7 +285,7 @@ class AdminService:
         conn = await self.db.get_connection()
         query = "SELECT * FROM copy_traders"
         if active_only:
-            query += " WHERE is_active = TRUE"
+            query += " WHERE is_active = 1"
         query += " ORDER BY created_at DESC LIMIT $1 OFFSET $2"
 
         row = await conn.fetchrow(query, (limit, offset))
@@ -296,7 +296,7 @@ class AdminService:
         conn = await self.db.get_connection()
         query = "SELECT COUNT(*) FROM copy_traders"
         if active_only:
-            query += " WHERE is_active = TRUE"
+            query += " WHERE is_active = 1"
         rows = await conn.fetch(query)
         return row[0] if row else 0
 
@@ -304,7 +304,7 @@ class AdminService:
         """Deactivate a copy trading subscription."""
         conn = await self.db.get_connection()
         await conn.execute(
-            "UPDATE copy_traders SET is_active = FALSE WHERE id = $1",
+            "UPDATE copy_traders SET is_active = 0 WHERE id = $1",
             (subscription_id,),
         )
         await conn.commit()

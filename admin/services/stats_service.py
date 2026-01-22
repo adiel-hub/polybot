@@ -23,7 +23,7 @@ class StatsService:
 
         # Active users
         row = await conn.fetchrow(
-            "SELECT COUNT(*) FROM users WHERE is_active = TRUE"
+            "SELECT COUNT(*) FROM users WHERE is_active = 1"
         )
         active_users = row[0] if row else 0
 
@@ -60,12 +60,12 @@ class StatsService:
         total_users = row[0] if row else 0
 
         row = await conn.fetchrow(
-            "SELECT COUNT(*) FROM users WHERE is_active = TRUE"
+            "SELECT COUNT(*) FROM users WHERE is_active = 1"
         )
         active_users = row[0] if row else 0
 
         row = await conn.fetchrow(
-            "SELECT COUNT(*) FROM users WHERE is_active = FALSE"
+            "SELECT COUNT(*) FROM users WHERE is_active = 0"
         )
         suspended_users = row[0] if row else 0
 
@@ -120,18 +120,18 @@ class StatsService:
 
         # Stop loss stats
         row = await conn.fetchrow(
-            "SELECT COUNT(*) FROM stop_loss_orders WHERE is_active = TRUE"
+            "SELECT COUNT(*) FROM stop_loss_orders WHERE is_active = 1"
         )
         active_stop_losses = row[0] if row else 0
 
         # Copy trading stats
         row = await conn.fetchrow(
-            "SELECT COUNT(*) FROM copy_traders WHERE is_active = TRUE"
+            "SELECT COUNT(*) FROM copy_traders WHERE is_active = 1"
         )
         active_copy_subscriptions = row[0] if row else 0
 
         row = await conn.fetchrow(
-            "SELECT COUNT(DISTINCT trader_address) FROM copy_traders WHERE is_active = TRUE"
+            "SELECT COUNT(DISTINCT trader_address) FROM copy_traders WHERE is_active = 1"
         )
         unique_traders_followed = row[0] if row else 0
 
