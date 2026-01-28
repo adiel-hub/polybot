@@ -18,12 +18,21 @@ class Database:
         """Get a connection from the pool."""
         if self._pool is None:
             raise RuntimeError("Database not initialized. Call initialize() first.")
-        return await self._pool.acquire()
+        conn = await self._pool.acquire()
+        logger.debug(
+            f"Connection acquired (pool size: {self._pool.get_size()}, "
+            f"idle: {self._pool.get_idle_size()})"
+        )
+        return conn
 
     async def release_connection(self, conn: asyncpg.Connection) -> None:
         """Release a connection back to the pool."""
         if self._pool:
             await self._pool.release(conn)
+            logger.debug(
+                f"Connection released (pool size: {self._pool.get_size()}, "
+                f"idle: {self._pool.get_idle_size()})"
+            )
 
     async def close(self) -> None:
         """Close the connection pool."""
@@ -33,13 +42,19 @@ class Database:
 
     async def initialize(self) -> None:
         """Create connection pool and initialize database tables."""
-        # Create connection pool
+        # Create connection pool with increased size for multiple services
+        # PolyBot + Polynews + Webhook server all share this pool
         self._pool = await asyncpg.create_pool(
             self.database_url,
-            min_size=2,
-            max_size=10,
+            min_size=5,           # Minimum idle connections
+            max_size=20,          # Maximum connections (shared across all services)
+            command_timeout=60,   # Query timeout (60 seconds)
+            timeout=30,           # Connection acquisition timeout (30 seconds)
+            max_inactive_connection_lifetime=300,  # Close idle connections after 5 min
         )
-        logger.info("Database connection pool created")
+        logger.info(
+            "Database connection pool created (min: 5, max: 20, shared across all services)"
+        )
 
         # Create tables
         await self._create_tables()

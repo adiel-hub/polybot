@@ -79,22 +79,15 @@ def setup_logging():
 
 # ============== PolyBot (Main Trading Bot) ==============
 
-async def run_polybot():
+async def run_polybot(db: "Database"):
     """Run the main PolyBot trading bot."""
     logger = logging.getLogger("polybot.main")
 
     try:
-        from config import settings
-        from database.connection import Database
         from bot.application import create_application
         from core.websocket.setup import setup_websocket_service
 
         logger.info("Starting PolyBot...")
-
-        # Initialize database
-        db = Database(settings.database_url)
-        await db.initialize()
-        logger.info("Database initialized")
 
         # Create and run bot application
         app = await create_application(db)
@@ -131,14 +124,13 @@ async def run_polybot():
 
 # ============== Polynews Bot ==============
 
-async def run_polynews():
+async def run_polynews(db: "Database"):
     """Run the Polynews article bot."""
     logger = logging.getLogger("polynews.main")
 
     try:
         from config import settings
         from news_bot.settings import news_settings
-        from database.connection import Database
         from core.polymarket.gamma_client import GammaMarketClient
         from news_bot.database.repositories.posted_market_repo import PostedMarketRepository
         from news_bot.services.market_monitor import MarketMonitorService
@@ -157,13 +149,6 @@ async def run_polynews():
         if not (news_settings.news_bot_token or settings.telegram_bot_token):
             logger.warning("No bot token for Polynews - disabled")
             return
-
-        # Wait for main bot to initialize the database first
-        await asyncio.sleep(2)
-
-        # Initialize database
-        db = Database(settings.database_url)
-        await db.initialize()
 
         # Initialize services
         posted_repo = PostedMarketRepository(db)
@@ -257,7 +242,6 @@ async def run_polynews():
             job_manager.stop()
             await gamma_client.close()
             await web_researcher.close()
-            await db.close()
             logger.info("Polynews Bot stopped")
 
     except Exception as e:
@@ -406,7 +390,7 @@ async def run_whalebot():
 
 # ============== Webhook Server ==============
 
-async def run_webhook_server():
+async def run_webhook_server(db: "Database"):
     """Run the webhook server for deposit notifications and health checks.
 
     This server MUST always run when deployed to Render (or similar platforms)
@@ -419,7 +403,6 @@ async def run_webhook_server():
 
     try:
         from config import settings
-        from database.connection import Database
 
         logger.info("Starting Webhook Server...")
 
@@ -431,10 +414,6 @@ async def run_webhook_server():
 
         if alchemy_configured:
             from core.webhook import AlchemyWebhookHandler, AlchemyWebhookManager, create_webhook_app
-
-            # Initialize database
-            db = Database(settings.database_url)
-            await db.initialize()
 
             # Create webhook handler
             handler = AlchemyWebhookHandler(
@@ -526,12 +505,20 @@ async def main():
     logger.info("=" * 60)
     logger.info("")
 
-    # Create tasks for all bots
+    # Initialize shared database connection pool
+    from config import settings
+    from database.connection import Database
+
+    db = Database(settings.database_url)
+    await db.initialize()
+    logger.info("✅ Shared database connection pool created")
+
+    # Create tasks for all bots with shared database
     tasks = [
-        asyncio.create_task(run_polybot(), name="polybot"),
-        asyncio.create_task(run_polynews(), name="polynews"),
+        asyncio.create_task(run_polybot(db), name="polybot"),
+        asyncio.create_task(run_polynews(db), name="polynews"),
         asyncio.create_task(run_whalebot(), name="whalebot"),
-        asyncio.create_task(run_webhook_server(), name="webhook"),
+        asyncio.create_task(run_webhook_server(db), name="webhook"),
     ]
 
     # Handle shutdown gracefully
@@ -554,6 +541,8 @@ async def main():
     except Exception as e:
         logger.error(f"Runner error: {e}")
     finally:
+        # Close shared database pool
+        await db.close()
         logger.info("All bots stopped")
 
 
