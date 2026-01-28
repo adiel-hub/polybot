@@ -130,13 +130,14 @@ async def handle_browse_callback(
         )
         return ConversationState.BROWSE_CATEGORY
 
-    # Fetch markets
-    limit = 5
-    offset = (page - 1) * limit
+    # Fetch markets (request more than needed to ensure 5 after filtering)
+    display_limit = 5
+    fetch_limit = 20  # Fetch extra to account for filtered markets
+    offset = (page - 1) * fetch_limit
 
     markets = await market_service.get_markets_by_category(
         category=category,
-        limit=limit,
+        limit=fetch_limit,
         offset=offset,
     )
 
@@ -173,8 +174,8 @@ async def handle_browse_callback(
     # Get bot username for deep links
     bot_username = context.bot.username
 
-    # Filter out expired and non-tradeable markets, limit to 5 per page
-    tradeable_markets = filter_active_markets(markets)[:5]
+    # Filter out expired and non-tradeable markets, limit to display_limit per page
+    tradeable_markets = filter_active_markets(markets)[:display_limit]
 
     if not tradeable_markets:
         text += "<i>No tradeable markets found in this category.</i>\n"
