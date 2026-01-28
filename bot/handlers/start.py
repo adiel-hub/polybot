@@ -71,8 +71,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         logger.info(f"✅ Stored deep_link_market in user_data: {market_id}")
 
     # Check if user already registered
-    is_registered = await user_service.is_registered(user.id)
-    logger.info(f"User {user.id} registration status: {is_registered}")
+    try:
+        is_registered = await user_service.is_registered(user.id)
+        logger.info(f"User {user.id} registration status: {is_registered}")
+    except Exception as e:
+        logger.error(f"Error checking registration for user {user.id}: {e}", exc_info=True)
+        await update.message.reply_text(
+            "⚠️ Service temporarily unavailable. Please try again in a moment."
+        )
+        return ConversationState.LICENSE_PROMPT
 
     if is_registered:
         # If there's a market deep link, show that market's trade page
