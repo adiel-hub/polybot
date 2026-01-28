@@ -6,6 +6,14 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+# Global proxy URL for use by other modules
+_proxy_url: str = ""
+
+
+def get_proxy_url() -> str:
+    """Get the configured proxy URL."""
+    return _proxy_url
+
 
 def configure_clob_proxy() -> None:
     """
@@ -14,6 +22,8 @@ def configure_clob_proxy() -> None:
     This monkey-patches the global httpx client used by py-clob-client
     to route requests through the configured proxy.
     """
+    global _proxy_url
+
     if not settings.proxy_url:
         logger.info("No proxy configured for CLOB client")
         return
@@ -24,7 +34,9 @@ def configure_clob_proxy() -> None:
         if not proxy_url.startswith(("http://", "https://")):
             proxy_url = f"http://{proxy_url}"
 
-        logger.info(f"Configuring CLOB proxy: {proxy_url.split('@')[-1]}")  # Log host only, not credentials
+        _proxy_url = proxy_url
+        proxy_host = proxy_url.split('@')[-1] if '@' in proxy_url else proxy_url
+        logger.info(f"Configuring CLOB proxy: {proxy_host}")
 
         # Import the helpers module from py-clob-client
         from py_clob_client.http_helpers import helpers
@@ -36,7 +48,7 @@ def configure_clob_proxy() -> None:
             timeout=30.0,
         )
 
-        # Replace the global client
+        # Replace the global client used by py-clob-client
         helpers._http_client = proxy_client
 
         # Test the proxy by making a simple request
@@ -49,6 +61,16 @@ def configure_clob_proxy() -> None:
                 logger.warning(f"⚠️ Proxy test returned status {test_resp.status_code}")
         except Exception as test_err:
             logger.warning(f"⚠️ Proxy test failed: {test_err}")
+
+        # Also test against Polymarket directly
+        try:
+            test_resp = proxy_client.get("https://clob.polymarket.com/time", timeout=10.0)
+            if test_resp.status_code == 200:
+                logger.info(f"✅ Polymarket CLOB accessible via proxy")
+            else:
+                logger.warning(f"⚠️ Polymarket CLOB test returned status {test_resp.status_code}")
+        except Exception as test_err:
+            logger.warning(f"⚠️ Polymarket CLOB test failed: {test_err}")
 
         logger.info("✅ CLOB client configured to use proxy")
 
