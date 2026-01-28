@@ -22,6 +22,9 @@ class Settings(BaseSettings):
         description="PostgreSQL connection URL (e.g., postgresql://user:pass@host:5432/db)"
     )
 
+    # Proxy (for bypassing Cloudflare blocks)
+    proxy_url: str = Field(default="", description="HTTP proxy URL (e.g., http://user:pass@host:port)")
+
     # Polymarket
     clob_host: str = Field(default="https://clob.polymarket.com", description="Polymarket CLOB API host")
     gamma_host: str = Field(default="https://gamma-api.polymarket.com", description="Polymarket Gamma API host")

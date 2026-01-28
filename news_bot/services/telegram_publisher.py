@@ -13,6 +13,7 @@ from telegram.error import TelegramError
 from core.polymarket.gamma_client import Market
 from news_bot.services.article_generator import GeneratedArticle
 from utils.short_id import generate_short_id
+from utils.slug_sanitizer import sanitize_slug
 
 logger = logging.getLogger(__name__)
 
@@ -186,15 +187,9 @@ class TelegramPublisherService:
             )
 
         # View on Polymarket button
-        # Use market slug with /market/ path (same as whale bot)
         polymarket_url = ""
         if market.slug:
-            # Clean the slug - remove trailing numeric patterns (token IDs)
-            # Also strip whitespace/newlines that may be in the API response
-            clean_slug = market.slug.strip().replace('\n', '').replace('\r', '').replace('\t', '')
-            clean_slug = re.sub(r'(-\d+)+$', '', clean_slug)
-            # Remove any remaining whitespace or control characters
-            clean_slug = re.sub(r'\s+', '', clean_slug)
+            clean_slug = sanitize_slug(market.slug)
             if clean_slug:
                 polymarket_url = f"https://polymarket.com/market/{clean_slug}"
 

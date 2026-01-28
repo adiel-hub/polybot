@@ -15,6 +15,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from config import TELEGRAM_BOT_TOKEN, POLYBOT_USERNAME, WHALE_CHANNEL_ID
 from monitors.whale_monitor import WhaleTrade
 from utils.formatting import format_whale_alert, create_deep_link
+from utils.slug_sanitizer import sanitize_slug
 
 logger = logging.getLogger(__name__)
 
@@ -152,10 +153,10 @@ class AlertService:
 
         deep_link = create_deep_link(trade.condition_id, self.polybot_username)
 
-        # Clean the market slug - remove trailing numeric patterns (token IDs)
+        # Sanitize the market slug
         polymarket_url = "https://polymarket.com"
         if trade.market_slug:
-            clean_slug = re.sub(r'(-\d+)+$', '', trade.market_slug)
+            clean_slug = sanitize_slug(trade.market_slug)
             if clean_slug:
                 polymarket_url = f"https://polymarket.com/market/{clean_slug}"
 

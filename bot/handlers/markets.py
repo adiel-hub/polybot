@@ -12,6 +12,7 @@ from bot.keyboards.common import get_back_keyboard
 from utils.url_parser import is_polymarket_url, extract_slug_from_url, extract_url_from_text
 from utils.polymarket_scraper import scrape_market_from_url
 from utils.short_id import generate_short_id
+from utils.slug_sanitizer import sanitize_slug
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +216,11 @@ async def handle_browse_callback(
                 trade_html = f'📈 <a href="{trade_link}">Trade</a>'
                 polymarket_html = ""
                 if market.slug:
-                    polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                    clean_slug = sanitize_slug(market.slug)
+
+                    if clean_slug:
+
+                        polymarket_url = f"https://polymarket.com/market/{clean_slug}"
                     polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
                 text += (
@@ -361,7 +366,11 @@ async def show_market_detail(
 
     # Add Polymarket link if slug exists
     if market.slug:
-        polymarket_url = f"https://polymarket.com/market/{market.slug}"
+        clean_slug = sanitize_slug(market.slug)
+
+        if clean_slug:
+
+            polymarket_url = f"https://polymarket.com/market/{clean_slug}"
         text += f"\n[View on Polymarket]({polymarket_url})\n"
 
     keyboard = [
@@ -471,7 +480,11 @@ async def show_event_options(
             trade_html = f'📈 <a href="{trade_link}">Trade</a>'
             polymarket_html = ""
             if market.slug:
-                polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                clean_slug = sanitize_slug(market.slug)
+
+                if clean_slug:
+
+                    polymarket_url = f"https://polymarket.com/market/{clean_slug}"
                 polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
             text += (
@@ -591,7 +604,11 @@ async def show_event_options_from_deeplink(
             trade_html = f'📈 <a href="{trade_link}">Trade</a>'
             polymarket_html = ""
             if market.slug:
-                polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                clean_slug = sanitize_slug(market.slug)
+
+                if clean_slug:
+
+                    polymarket_url = f"https://polymarket.com/market/{clean_slug}"
                 polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
             text += (
@@ -707,8 +724,10 @@ async def handle_search_input(
                     trade_html = f'📈 <a href="{trade_link}">Trade</a>'
                     polymarket_html = ""
                     if m.slug:
-                        polymarket_url = f"https://polymarket.com/market/{m.slug}"
-                        polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
+                        clean_slug = sanitize_slug(m.slug)
+                        if clean_slug:
+                            polymarket_url = f"https://polymarket.com/market/{clean_slug}"
+                            polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
                     text += (
                         f"{i}) {m.question[:60]}{'...' if len(m.question) > 60 else ''}\n"
@@ -794,7 +813,11 @@ async def handle_search_input(
 
                     # Add Polymarket link if slug exists
                     if market.slug:
-                        polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                        clean_slug = sanitize_slug(market.slug)
+
+                        if clean_slug:
+
+                            polymarket_url = f"https://polymarket.com/market/{clean_slug}"
                         text += f"\n[View on Polymarket]({polymarket_url})\n"
 
                     keyboard = [
@@ -882,7 +905,11 @@ async def handle_search_input(
 
         # Add Polymarket link if slug exists
         if market.slug:
-            polymarket_url = f"https://polymarket.com/market/{market.slug}"
+            clean_slug = sanitize_slug(market.slug)
+
+            if clean_slug:
+
+                polymarket_url = f"https://polymarket.com/market/{clean_slug}"
             text += f"\n[View on Polymarket]({polymarket_url})\n"
 
         keyboard = [
@@ -967,7 +994,11 @@ async def handle_search_input(
                 trade_html = f'📈 <a href="{trade_link}">Trade</a>'
                 polymarket_html = ""
                 if market.slug:
-                    polymarket_url = f"https://polymarket.com/market/{market.slug}"
+                    clean_slug = sanitize_slug(market.slug)
+
+                    if clean_slug:
+
+                        polymarket_url = f"https://polymarket.com/market/{clean_slug}"
                     polymarket_html = f' │ <a href="{polymarket_url}">View</a>'
 
                 text += (

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import httpx
 
 from config import settings
+from utils.slug_sanitizer import sanitize_slug
 
 logger = logging.getLogger(__name__)
 
@@ -76,14 +77,9 @@ class Market:
         markets_list = data.get("markets", [])
         outcomes_count = len(markets_list) if markets_list else 1
 
-        # Sanitize slug to remove any newlines or control characters
+        # Sanitize slug using shared utility
         raw_slug = market.get("slug", data.get("slug"))
-        if raw_slug:
-            # Remove all whitespace and control characters
-            clean_slug = raw_slug.strip().replace('\n', '').replace('\r', '').replace('\t', '')
-            clean_slug = re.sub(r'\s+', '', clean_slug)
-        else:
-            clean_slug = None
+        clean_slug = sanitize_slug(raw_slug) if raw_slug else None
 
         return cls(
             condition_id=market.get("conditionId", data.get("id", "")),

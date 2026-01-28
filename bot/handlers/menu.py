@@ -9,6 +9,7 @@ from telegram.ext import ContextTypes
 from bot.conversations.states import ConversationState
 from bot.keyboards.main_menu import get_main_menu_keyboard
 from utils.short_id import generate_short_id
+from utils.slug_sanitizer import sanitize_slug
 
 logger = logging.getLogger(__name__)
 
@@ -209,8 +210,10 @@ async def show_main_menu(
 
             # Add Polymarket link if slug exists
             if market.slug:
-                polymarket_url = f"https://polymarket.com/market/{market.slug}"
-                text += f"\n[View on Polymarket]({polymarket_url})\n"
+                clean_slug = sanitize_slug(market.slug)
+                if clean_slug:
+                    polymarket_url = f"https://polymarket.com/market/{clean_slug}"
+                    text += f"\n[View on Polymarket]({polymarket_url})\n"
 
             keyboard = [
                 [

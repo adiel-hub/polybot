@@ -14,6 +14,7 @@ from config import settings
 from database.connection import Database
 from bot.application import create_application
 from core.websocket.setup import setup_websocket_service
+from core.polymarket.proxy_config import configure_clob_proxy
 
 
 # Configure logging
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 async def main():
     """Initialize and run the bot."""
     logger.info("Starting PolyBot...")
+
+    # Configure proxy for CLOB client (if set)
+    configure_clob_proxy()
 
     # Initialize database
     db = Database(settings.database_url)
